@@ -1,5 +1,5 @@
 export type SpatialMode = 'xr-high' | 'xr-standard' | 'vision' | 'sensor-limited'
-export type SpatialTrackingState = 'STARTING' | 'ACTIVE' | 'SEARCHING' | 'CALIBRATING' | 'LOST' | 'LIMITED'
+export type SpatialTrackingState = 'INITIALIZING' | 'STARTING' | 'ACTIVE' | 'WEAK' | 'SEARCHING' | 'CALIBRATING' | 'LOST' | 'LIMITED'
 export type SpatialSource = 'webxr' | 'vision' | 'sensors'
 export type PositionMethod = 'webxr-depth' | 'webxr' | 'vision-depth' | 'vision-scaled' | 'vision-unscaled' | 'gps-sensors'
 
@@ -9,6 +9,7 @@ export type SpatialPose = {
   timestamp: number
   source: SpatialSource
   relativeToOrigin: boolean
+  metricScaleAvailable: boolean
 }
 
 export type SpatialAccuracy = {
@@ -39,6 +40,9 @@ export type SpatialDiagnostics = {
   visionFps?: number
   scaleStatus?: 'METRIC' | 'ESTIMATED' | 'CALIBRATING' | 'UNSCALED'
   reason?: string
+  inlierRatio?: number
+  processingMs?: number
+  relativePosition?: { x: number; y: number; z: number }
   xrSessionActive?: boolean
   referenceSpaceType?: 'local-floor' | 'local' | null
   xrPoseActive?: boolean

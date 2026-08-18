@@ -12,7 +12,7 @@ export class WebXRSpatialProvider implements SpatialProvider {
   async start(_context: SpatialStartContext) {
     this.controller = await startXRTracking((update) => {
       this.state = 'ACTIVE'
-      this.pose = { position: update.position, orientation: update.orientation, timestamp: Date.now(), source: 'webxr', relativeToOrigin: true }
+      this.pose = { position: update.position, orientation: update.orientation, timestamp: Date.now(), source: 'webxr', relativeToOrigin: true, metricScaleAvailable: true }
       this.poseListeners.forEach((listener) => listener(this.pose))
     }, (diagnostics) => this.handleDiagnostics(diagnostics))
     await new Promise<void>((resolve, reject) => {

@@ -74,10 +74,11 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
     }))
   }, [orientation, position, distance])
 
-  const trackingLabel = capabilities.trackingState
+  const trackingLabel = spatialDiagnostics?.mode === 'vision' ? 'VISION' : capabilities.trackingState
   const gpsText = capabilities.sensorData.location
     ? `${capabilities.sensorData.location.accuracy.toFixed(1)} m`
     : 'Unavailable'
+  const metricTracking = spatialDiagnostics?.mode.startsWith('xr-') && capabilities.trackingState === 'ACTIVE'
 
   return (
     <main className="smart-scan-page">
@@ -90,12 +91,14 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
         </header>
         <section className="scan-diagnostics" aria-label="Smart Scan status">
           <span>GPS: {gpsText}</span>
+          <span>GPS quality: {getGpsQuality(capabilities.sensorData.location?.accuracy)}</span>
           <span>Heading: {formatHeading(capabilities.sensorData.location?.heading)}</span>
           <span>Orientation: {capabilities.orientation === 'ready' ? 'OK' : 'LIMITED'}</span>
           <span>Tracking: {trackingLabel}</span>
         </section>
         <div className="scan-reticle" aria-hidden="true">+</div>
-        {capabilities.trackingState === 'ACTIVE' && <PositionHud position={position} distance={distance} />}
+        {metricTracking && <PositionHud position={position} distance={distance} />}
+        {spatialDiagnostics?.mode === 'vision' && <VisionTrajectoryHud position={spatialDiagnostics.relativePosition} />}
         <SpatialDiagnosticsPanel capabilities={capabilities} diagnostics={spatialDiagnostics} />
         <footer className="scan-footer">
           <p>Point the camera at an object</p>
@@ -107,6 +110,21 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
 }
 
 function SpatialDiagnosticsPanel({ capabilities, diagnostics }: { capabilities: SmartScanCapabilities; diagnostics: SpatialDiagnostics | null }) {
+  if (diagnostics?.mode === 'vision') {
+    return (
+      <div className="xr-diagnostics">
+        <span>Provider: Vision</span>
+        <span>Tracking: {diagnostics.trackingState}</span>
+        <span>Scale: {diagnostics.scaleStatus ?? 'UNSCALED'}</span>
+        <span>Accuracy: {diagnostics.accuracy?.level.toUpperCase() ?? 'UNKNOWN'}</span>
+        <span>Vision FPS: {diagnostics.visionFps?.toFixed(1) ?? '—'}</span>
+        <span>Features: {diagnostics.featureCount ?? 0}</span>
+        <span>Matches/Inliers: {diagnostics.matchedFeatureCount ?? 0} / {Math.round((diagnostics.inlierRatio ?? 0) * (diagnostics.matchedFeatureCount ?? 0))}</span>
+        <span>Processing: {diagnostics.processingMs?.toFixed(1) ?? '—'} ms</span>
+        <span>GPS quality: {getGpsQuality(capabilities.sensorData.location?.accuracy)}</span>
+      </div>
+    )
+  }
   return (
     <div className="xr-diagnostics">
       <span>Provider: {diagnostics?.provider ?? '—'}</span>
@@ -130,6 +148,18 @@ function SpatialDiagnosticsPanel({ capabilities, diagnostics }: { capabilities: 
   )
 }
 
+function VisionTrajectoryHud({ position }: { position?: { x: number; y: number; z: number } }) {
+  return (
+    <div className="position-hud">
+      <strong>Relative trajectory</strong>
+      <span>VX: {formatUnscaled(position?.x)}</span>
+      <span>VY: {formatUnscaled(position?.y)}</span>
+      <span>VZ: {formatUnscaled(position?.z)}</span>
+      <span>Scale: UNSCALED</span>
+    </div>
+  )
+}
+
 function PositionHud({ position, distance }: { position: Vector3 | null; distance: number | null }) {
   return (
     <div className="position-hud">
@@ -144,6 +174,17 @@ function PositionHud({ position, distance }: { position: Vector3 | null; distanc
 
 function formatMeters(value: number | undefined) {
   return value == null ? 'Unavailable' : `${value.toFixed(2)} m`
+}
+
+function formatUnscaled(value: number | undefined) {
+  return value == null ? '—' : value.toFixed(4)
+}
+
+function getGpsQuality(accuracy: number | undefined) {
+  if (accuracy == null) return 'UNAVAILABLE'
+  if (accuracy <= 10) return 'GOOD'
+  if (accuracy <= 30) return 'POOR'
+  return 'UNUSABLE'
 }
 
 function formatHeading(value: number | null | undefined) {

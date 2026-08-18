@@ -1,17 +1,26 @@
+import { ScaleEstimator } from './scaleEstimator'
+import { loadOpenCVForVision } from './opencvLoader'
 import type { SpatialAccuracy, SpatialCapabilities, SpatialDiagnostics, SpatialPose, SpatialProvider, SpatialStartContext, SpatialTrackingState } from './spatialTypes'
+import { analyzeVisionFrame, type FeaturePoint, type VisionFrameResult } from './visionTrackingCore'
 
 export class VisionSpatialProvider implements SpatialProvider {
   readonly mode = 'vision' as const
   private stream: MediaStream | null = null
   private video: HTMLVideoElement | null = null
   private canvas: HTMLCanvasElement | null = null
-  private timer: number | null = null
-  private state: SpatialTrackingState = 'CALIBRATING'
-  private featureCount = 0
-  private matchedFeatureCount = 0
+  private context: CanvasRenderingContext2D | null = null
+  private worker: Worker | null = null
   private previousFeatures: FeaturePoint[] = []
+  private timer: number | null = null
+  private paused = false
+  private processing = false
+  private state: SpatialTrackingState = 'INITIALIZING'
+  private pose: SpatialPose | null = null
+  private relativePosition = { x: 0, y: 0, z: 0 }
+  private latest: VisionFrameResult = { features: [], featureCount: 0, matchedFeatureCount: 0, inlierCount: 0, inlierRatio: 0, motion: { x: 0, y: 0 }, processingMs: 0 }
   private sampleCount = 0
   private startedAt = 0
+  private readonly scaleEstimator = new ScaleEstimator()
   private readonly poseListeners = new Set<(pose: SpatialPose | null) => void>()
   private readonly diagnosticsListeners = new Set<(diagnostics: SpatialDiagnostics) => void>()
 
@@ -25,92 +34,112 @@ export class VisionSpatialProvider implements SpatialProvider {
     this.canvas = document.createElement('canvas')
     this.canvas.width = 320
     this.canvas.height = 240
+    this.context = this.canvas.getContext('2d', { willReadFrequently: true })
+    if (!this.context) throw new Error('Vision canvas context could not be created.')
+    this.worker = this.createWorker()
+    void loadOpenCVForVision()
     this.startedAt = performance.now()
-    this.sample()
+    document.addEventListener('visibilitychange', this.handleVisibility)
+    window.addEventListener('pagehide', this.handlePageHide)
+    window.addEventListener('pageshow', this.handlePageShow)
+    this.scheduleSample()
     this.publish()
   }
 
   async stop() {
-    if (this.timer !== null) window.clearTimeout(this.timer)
-    this.timer = null
+    this.clearTimer()
+    document.removeEventListener('visibilitychange', this.handleVisibility)
+    window.removeEventListener('pagehide', this.handlePageHide)
+    window.removeEventListener('pageshow', this.handlePageShow)
+    this.worker?.terminate()
+    this.worker = null
+    this.previousFeatures = []
     this.video?.pause()
     this.video = null
     this.canvas = null
+    this.context = null
     this.stream?.getTracks().forEach((track) => track.stop())
     this.stream = null
-    this.previousFeatures = []
+    this.pose = null
     this.poseListeners.forEach((listener) => listener(null))
   }
 
-  getPose() { return null }
+  resetVisionOrigin() {
+    this.relativePosition = { x: 0, y: 0, z: 0 }
+    this.pose = null
+    this.latest = { features: [], featureCount: 0, matchedFeatureCount: 0, inlierCount: 0, inlierRatio: 0, motion: { x: 0, y: 0 }, processingMs: 0 }
+    this.state = 'INITIALIZING'
+    this.publish()
+    this.scheduleSample()
+  }
+
+  getPose() { return this.pose }
   getTrackingState() { return this.state }
-  getAccuracy(): SpatialAccuracy { return { level: 'low', confidence: this.matchedFeatureCount > 20 ? 0.5 : 0.1, source: 'Monocular visual tracking; metric scale is not calibrated' } }
+  getAccuracy(): SpatialAccuracy { return { level: this.latest.inlierRatio > 0.35 ? 'medium' : 'low', confidence: this.latest.inlierRatio, source: 'Monocular visual tracking; metric scale is not calibrated' } }
   getCapabilities(): SpatialCapabilities { return { webxr: false, immersiveAr: false, hitTest: false, depth: false, camera: true, orientation: true, gps: false } }
   subscribePose(listener: (pose: SpatialPose | null) => void) { this.poseListeners.add(listener); return () => this.poseListeners.delete(listener) }
   subscribeDiagnostics(listener: (diagnostics: SpatialDiagnostics) => void) { this.diagnosticsListeners.add(listener); return () => this.diagnosticsListeners.delete(listener) }
+  getCameraStream() { return this.stream }
+
+  private createWorker() {
+    try {
+      const worker = new Worker(new URL('./visionTracking.worker.ts', import.meta.url), { type: 'module' })
+      worker.onmessage = (event: MessageEvent<VisionFrameResult>) => this.handleResult(event.data)
+      worker.onerror = () => { worker.terminate(); this.worker = null; this.state = 'LOST'; this.publish(); this.scheduleSample() }
+      return worker
+    } catch {
+      return null
+    }
+  }
+
+  private scheduleSample() {
+    this.clearTimer()
+    if (!this.paused) this.timer = window.setTimeout(() => this.sample(), 100)
+  }
 
   private sample() {
-    if (!this.video || !this.canvas) return
-    const context = this.canvas.getContext('2d', { willReadFrequently: true })
-    if (!context) return
-    context.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height)
-    const image = context.getImageData(0, 0, this.canvas.width, this.canvas.height)
-    const currentFeatures = detectFeatures(image.data, image.width, image.height)
-    this.matchedFeatureCount = matchFeatures(this.previousFeatures, currentFeatures)
-    this.previousFeatures = currentFeatures
-    this.featureCount = currentFeatures.length
+    if (this.paused || this.processing || !this.video || !this.canvas || !this.context) return
+    if (this.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) { this.scheduleSample(); return }
+    this.context.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height)
+    const image = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height)
+    this.processing = true
+    if (this.worker) {
+      this.worker.postMessage({ image }, [image.data.buffer])
+    } else {
+      this.processing = false
+      const result = analyzeVisionFrame(image.data, image.width, image.height, this.previousFeatures)
+      this.previousFeatures = result.features
+      this.handleResult(result)
+    }
+  }
+
+  private handleResult(result: VisionFrameResult) {
+    this.processing = false
+    this.latest = result
     this.sampleCount += 1
-    this.state = currentFeatures.length > 24 ? 'CALIBRATING' : 'SEARCHING'
+    const enoughFeatures = result.featureCount >= 8
+    const enoughInliers = result.inlierCount >= 6 && result.inlierRatio >= 0.25
+    this.state = enoughFeatures && enoughInliers ? 'ACTIVE' : enoughFeatures ? 'WEAK' : 'LOST'
+    if (this.state === 'ACTIVE') {
+      this.relativePosition = { x: this.relativePosition.x - result.motion.x / 320, y: this.relativePosition.y - result.motion.y / 320, z: this.relativePosition.z }
+      this.pose = { position: this.relativePosition, orientation: { x: 0, y: 0, z: 0, w: 1 }, timestamp: Date.now(), source: 'vision', relativeToOrigin: true, metricScaleAvailable: false }
+      this.poseListeners.forEach((listener) => listener(this.pose))
+    } else {
+      this.poseListeners.forEach((listener) => listener(null))
+    }
     this.publish()
-    this.timer = window.setTimeout(() => this.sample(), 100)
+    this.scheduleSample()
   }
 
   private publish() {
     const elapsed = Math.max(0.001, (performance.now() - this.startedAt) / 1000)
-    const diagnostics: SpatialDiagnostics = { provider: 'Vision', mode: this.mode, trackingState: this.state, accuracy: this.getAccuracy(), featureCount: this.featureCount, matchedFeatureCount: this.matchedFeatureCount, visionFps: this.sampleCount / elapsed, scaleStatus: 'CALIBRATING', reason: 'Relative visual features are sampled; metric pose is not claimed.' }
-    this.diagnosticsListeners.forEach((listener) => listener(diagnostics))
+    this.diagnosticsListeners.forEach((listener) => listener({
+      provider: 'Vision', mode: this.mode, trackingState: this.state, accuracy: this.getAccuracy(), featureCount: this.latest.featureCount, matchedFeatureCount: this.latest.matchedFeatureCount, inlierRatio: this.latest.inlierRatio, processingMs: this.latest.processingMs, visionFps: this.sampleCount / elapsed, scaleStatus: this.scaleEstimator.getStatus() === 'UNSCALED' ? 'UNSCALED' : this.scaleEstimator.getStatus(), relativePosition: this.relativePosition, reason: this.state === 'LOST' ? 'Looking for visual features…' : 'Relative visual trajectory; metric scale is unavailable.',
+    }))
   }
 
-  getCameraStream() { return this.stream }
-}
-
-type FeaturePoint = { x: number; y: number; descriptor: number[] }
-
-function detectFeatures(data: Uint8ClampedArray, width: number, height: number): FeaturePoint[] {
-  const points: FeaturePoint[] = []
-  for (let y = 2; y < height - 2; y += 4) {
-    for (let x = 2; x < width - 2; x += 4) {
-      const horizontal = Math.abs(luminance(data, width, x + 2, y) - luminance(data, width, x - 2, y))
-      const vertical = Math.abs(luminance(data, width, x, y + 2) - luminance(data, width, x, y - 2))
-      if (horizontal * vertical > 900 && points.length < 160) points.push({ x, y, descriptor: descriptorAt(data, width, x, y) })
-    }
-  }
-  return points
-}
-
-function matchFeatures(previous: FeaturePoint[], current: FeaturePoint[]) {
-  let matches = 0
-  for (const source of previous) {
-    let best = Number.POSITIVE_INFINITY
-    for (const target of current) best = Math.min(best, descriptorDistance(source.descriptor, target.descriptor))
-    if (best < 180) matches += 1
-  }
-  return matches
-}
-
-function descriptorAt(data: Uint8ClampedArray, width: number, x: number, y: number) {
-  const values: number[] = []
-  for (let offsetY = -2; offsetY <= 2; offsetY += 2) {
-    for (let offsetX = -2; offsetX <= 2; offsetX += 2) values.push(luminance(data, width, x + offsetX, y + offsetY))
-  }
-  return values
-}
-
-function descriptorDistance(first: number[], second: number[]) {
-  return Math.sqrt(first.reduce((sum, value, index) => sum + (value - second[index]) ** 2, 0))
-}
-
-function luminance(data: Uint8ClampedArray, width: number, x: number, y: number) {
-  const index = (y * width + x) * 4
-  return data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114
+  private clearTimer() { if (this.timer !== null) window.clearTimeout(this.timer); this.timer = null }
+  private handleVisibility = () => { this.paused = document.visibilityState === 'hidden'; if (this.paused) this.clearTimer(); else this.scheduleSample() }
+  private handlePageHide = () => { this.paused = true; this.clearTimer() }
+  private handlePageShow = () => { this.paused = false; this.scheduleSample() }
 }
