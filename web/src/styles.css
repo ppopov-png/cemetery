@@ -145,6 +145,7 @@ h1 {
 .object-box-lost { border-color: #d56b6b; opacity: 0.65; }
 .scan-message { position: absolute; left: 20px; right: 20px; bottom: 190px; z-index: 5; color: #f2f5ed; font-size: 0.9rem; text-align: center; text-shadow: 0 1px 5px #000; }
 .capture-object-button { position: absolute; left: 20px; right: 20px; bottom: 116px; z-index: 6; min-height: 54px; border: 0; border-radius: 14px; color: #07100b; background: #b7cf9c; font-weight: 800; letter-spacing: 0.08em; }
+.detector-error { position: absolute; left: 20px; right: 20px; bottom: 116px; z-index: 6; padding: 14px; border: 1px solid rgba(213, 107, 107, 0.65); border-radius: 12px; color: #f4b4b4; background: rgba(40, 10, 10, 0.75); text-align: center; }
 .capture-progress { position: absolute; left: 20px; right: 20px; bottom: 116px; z-index: 6; display: grid; gap: 6px; color: #f2f5ed; text-align: center; }
 .capture-progress strong { font-size: 1.2rem; }
 .scan-complete { position: absolute; inset: 20% 20px auto; z-index: 10; padding: 20px; border: 1px solid rgba(183, 207, 156, 0.45); border-radius: 18px; color: #f2f5ed; background: rgba(7, 11, 10, 0.9); text-align: center; }

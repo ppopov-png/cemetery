@@ -1,0 +1,2 @@
+# Install the training environment separately from the frontend.
+ultralytics>=8.3,<9

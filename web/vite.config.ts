@@ -30,6 +30,9 @@ export default defineConfig({
             type: 'image/svg+xml'
           }
         ]
+      },
+      workbox: {
+        globIgnores: ['**/ort-wasm-*.wasm', '**/ort.bundle*.js']
       }
     })
   ]

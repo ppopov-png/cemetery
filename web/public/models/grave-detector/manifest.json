@@ -1,0 +1,11 @@
+{
+  "name": "grave-detector",
+  "version": "0.1.0",
+  "inputWidth": 320,
+  "inputHeight": 320,
+  "classes": ["grave_object"],
+  "confidenceThreshold": 0.55,
+  "iouThreshold": 0.45,
+  "outputFormat": "yolo-v8-detection",
+  "normalize": true
+}

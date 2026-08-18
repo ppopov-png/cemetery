@@ -1,6 +1,4 @@
 export const objectTrackingConfig = {
-  roiWidth: 0.4,
-  roiHeight: 0.5,
   maxFeatures: 120,
   minFeatures: 8,
   minInliers: 5,
