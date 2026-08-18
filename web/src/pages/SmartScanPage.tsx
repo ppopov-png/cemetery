@@ -19,9 +19,10 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
 
   useEffect(() => {
     const video = videoRef.current
-    if (!video) return
-    video.srcObject = prepared.cameraStream
-    void video.play().catch(() => undefined)
+    if (video && prepared.cameraStream) {
+      video.srcObject = prepared.cameraStream
+      void video.play().catch(() => undefined)
+    }
 
     const unsubscribeOrientation = subscribeToOrientation(setOrientation)
     prepared.xrTracking?.setOnUpdate(({ position: nextPosition, distanceFromStart }) => {
@@ -32,8 +33,8 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
 
     return () => {
       unsubscribeOrientation()
-      video.srcObject = null
-      stopCameraStream(prepared.cameraStream)
+      if (video) video.srcObject = null
+      if (prepared.cameraStream) stopCameraStream(prepared.cameraStream)
       void prepared.xrTracking?.stop()
     }
   }, [prepared])
@@ -48,6 +49,12 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
       xrPoseActive: diagnostics.poseActive,
       xrFrames: diagnostics.xrFrames,
       trackingFrames: diagnostics.trackingFrames,
+      lastXRFrameAt: diagnostics.lastXRFrameAt,
+      webglStatus: diagnostics.webglStatus,
+      xrCompatibleGL: diagnostics.xrCompatibleGL,
+      baseLayerActive: diagnostics.baseLayerActive,
+      xrVisibility: diagnostics.xrVisibility,
+      xrFrameLoopError: diagnostics.xrFrameLoopError,
     }))
   }
 
@@ -65,7 +72,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
 
   return (
     <main className="smart-scan-page">
-      <video ref={videoRef} className="smart-scan-camera" autoPlay muted playsInline aria-label="Smart Scan camera" />
+      {prepared.cameraStream && <video ref={videoRef} className="smart-scan-camera" autoPlay muted playsInline aria-label="Smart Scan camera" />}
       <div className="smart-scan-shade" />
       <div className="smart-scan-hud">
         <header className="scan-topbar">
@@ -96,8 +103,14 @@ function XRDiagnostics({ capabilities }: { capabilities: SmartScanCapabilities }
       <span>XR session: {capabilities.xrSessionActive ? 'ACTIVE' : 'INACTIVE'}</span>
       <span>Reference space: {capabilities.referenceSpaceType ?? '—'}</span>
       <span>XR pose: {capabilities.xrPoseActive ? 'ACTIVE' : 'NULL'}</span>
+      <span>WebGL: {capabilities.webglStatus}</span>
+      <span>XR compatible GL: {capabilities.xrCompatibleGL ? 'YES' : 'NO'}</span>
+      <span>Base layer: {capabilities.baseLayerActive ? 'ACTIVE' : 'NULL'}</span>
+      <span>XR visibility: {capabilities.xrVisibility}</span>
       <span>XR frames: {capabilities.xrFrames}</span>
       <span>Tracking frames: {capabilities.trackingFrames}</span>
+      <span>Last XR frame: {formatTimestamp(capabilities.lastXRFrameAt)}</span>
+      {capabilities.xrFrameLoopError && <span>{capabilities.xrFrameLoopError}</span>}
       {capabilities.xrError && <span>{capabilities.xrError.name}: {capabilities.xrError.message}</span>}
     </div>
   )
@@ -121,4 +134,8 @@ function formatMeters(value: number | undefined) {
 
 function formatHeading(value: number | null | undefined) {
   return value == null ? 'Unavailable' : `${value.toFixed(0)}°`
+}
+
+function formatTimestamp(value: number | null) {
+  return value == null ? '—' : new Date(value).toLocaleTimeString()
 }

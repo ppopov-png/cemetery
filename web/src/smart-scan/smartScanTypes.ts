@@ -28,6 +28,12 @@ export type SmartScanCapabilities = {
   xrPoseActive: boolean
   xrFrames: number
   trackingFrames: number
+  lastXRFrameAt: number | null
+  webglStatus: 'ACTIVE' | 'ERROR'
+  xrCompatibleGL: boolean
+  baseLayerActive: boolean
+  xrVisibility: 'visible' | 'visible-blurred' | 'hidden' | 'unknown'
+  xrFrameLoopError: string | null
   xrError: { name: string; message: string } | null
   sensorData: SmartScanSensorData
 }

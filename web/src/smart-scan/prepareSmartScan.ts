@@ -8,7 +8,7 @@ export type PrepareStep = 'camera' | 'gps' | 'orientation' | 'webxr' | 'ar-track
 export type PrepareProgress = { step: PrepareStep; status: CapabilityStatus; message?: string }
 export type PreparedSmartScan = {
   capabilities: SmartScanCapabilities
-  cameraStream: MediaStream
+  cameraStream: MediaStream | null
   xrTracking: XRTrackingController | null
 }
 
@@ -46,9 +46,14 @@ export async function prepareSmartScan(
 
   onProgress({ step: 'camera', status: 'checking' })
   try {
-    cameraStream = (await openRearCamera()).stream
-    capabilities.camera = 'ready'
-    onProgress({ step: 'camera', status: 'ready' })
+    if (xrTracking) {
+      capabilities.camera = 'ready'
+      onProgress({ step: 'camera', status: 'ready', message: 'Using WebXR passthrough camera.' })
+    } else {
+      cameraStream = (await openRearCamera()).stream
+      capabilities.camera = 'ready'
+      onProgress({ step: 'camera', status: 'ready' })
+    }
   } catch (error) {
     await xrTracking?.stop()
     const permissionDenied = isPermissionDenied(error)
@@ -95,13 +100,13 @@ export async function prepareSmartScan(
 
   capabilities.spatialMode = 'limited'
   capabilities.sensorData.location = location
-  return { capabilities, cameraStream: cameraStream!, xrTracking }
+  return { capabilities, cameraStream, xrTracking }
 }
 
 export function createInitialCapabilities(): SmartScanCapabilities {
   return {
     camera: 'checking', gps: 'checking', orientation: 'checking', webxr: 'checking', immersiveAr: 'checking', depth: 'unknown', spatialMode: 'limited',
-    trackingState: 'LIMITED', referenceSpaceType: null, xrSessionActive: false, xrPoseActive: false, xrFrames: 0, trackingFrames: 0, xrError: null,
+    trackingState: 'LIMITED', referenceSpaceType: null, xrSessionActive: false, xrPoseActive: false, xrFrames: 0, trackingFrames: 0, lastXRFrameAt: null, webglStatus: 'ERROR', xrCompatibleGL: false, baseLayerActive: false, xrVisibility: 'unknown', xrFrameLoopError: null, xrError: null,
     sensorData: { location: null, orientation: { alpha: null, beta: null, gamma: null }, position: null, distanceFromStart: null },
   }
 }
@@ -126,6 +131,6 @@ function getXRError(error: unknown) {
 }
 
 export function cleanupPreparedSmartScan(prepared: PreparedSmartScan) {
-  stopCameraStream(prepared.cameraStream)
+  if (prepared.cameraStream) stopCameraStream(prepared.cameraStream)
   void prepared.xrTracking?.stop()
 }
