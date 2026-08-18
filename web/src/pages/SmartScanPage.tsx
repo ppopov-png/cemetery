@@ -99,6 +99,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
         <div className="scan-reticle" aria-hidden="true">+</div>
         {metricTracking && <PositionHud position={position} distance={distance} />}
         {spatialDiagnostics?.mode === 'vision' && <VisionTrajectoryHud position={spatialDiagnostics.relativePosition} />}
+        {spatialDiagnostics?.mode === 'vision' && <VisionTrackingHint state={spatialDiagnostics.trackingState} />}
         <SpatialDiagnosticsPanel capabilities={capabilities} diagnostics={spatialDiagnostics} />
         <footer className="scan-footer">
           <p>Point the camera at an object</p>
@@ -112,7 +113,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
 function SpatialDiagnosticsPanel({ capabilities, diagnostics }: { capabilities: SmartScanCapabilities; diagnostics: SpatialDiagnostics | null }) {
   if (diagnostics?.mode === 'vision') {
     return (
-      <div className="xr-diagnostics">
+      <div className="xr-diagnostics vision-diagnostics">
         <span>Provider: Vision</span>
         <span>Tracking: {diagnostics.trackingState}</span>
         <span>Scale: {diagnostics.scaleStatus ?? 'UNSCALED'}</span>
@@ -120,6 +121,11 @@ function SpatialDiagnosticsPanel({ capabilities, diagnostics }: { capabilities: 
         <span>Vision FPS: {diagnostics.visionFps?.toFixed(1) ?? '—'}</span>
         <span>Features: {diagnostics.featureCount ?? 0}</span>
         <span>Matches/Inliers: {diagnostics.matchedFeatureCount ?? 0} / {Math.round((diagnostics.inlierRatio ?? 0) * (diagnostics.matchedFeatureCount ?? 0))}</span>
+        <span>Inlier ratio: {((diagnostics.inlierRatio ?? 0) * 100).toFixed(0)}%</span>
+        <span>Confidence: {((diagnostics.trackingConfidence ?? 0) * 100).toFixed(0)}%</span>
+        <span>Parallax: {diagnostics.parallaxPx?.toFixed(1) ?? '—'} px</span>
+        <span>Blur/Exposure: {diagnostics.blurScore?.toFixed(0) ?? '—'} / {diagnostics.exposureMean?.toFixed(0) ?? '—'}</span>
+        <span>Intrinsics: {diagnostics.intrinsics ? `${Math.round(diagnostics.intrinsics.fx)} px @ ${diagnostics.intrinsics.width}×${diagnostics.intrinsics.height}` : '—'}</span>
         <span>Processing: {diagnostics.processingMs?.toFixed(1) ?? '—'} ms</span>
         <span>GPS quality: {getGpsQuality(capabilities.sensorData.location?.accuracy)}</span>
       </div>
@@ -150,7 +156,7 @@ function SpatialDiagnosticsPanel({ capabilities, diagnostics }: { capabilities: 
 
 function VisionTrajectoryHud({ position }: { position?: { x: number; y: number; z: number } }) {
   return (
-    <div className="position-hud">
+    <div className="position-hud vision-position-hud">
       <strong>Relative trajectory</strong>
       <span>VX: {formatUnscaled(position?.x)}</span>
       <span>VY: {formatUnscaled(position?.y)}</span>
@@ -158,6 +164,11 @@ function VisionTrajectoryHud({ position }: { position?: { x: number; y: number; 
       <span>Scale: UNSCALED</span>
     </div>
   )
+}
+
+function VisionTrackingHint({ state }: { state: SpatialDiagnostics['trackingState'] }) {
+  const hint = state === 'WEAK' ? 'Move the phone more slowly' : state === 'LOST' ? 'Point at a detailed, well-lit surface' : state === 'RECOVERING' || state === 'INITIALIZING' ? 'Looking for visual features…' : null
+  return hint ? <p className="vision-tracking-hint">{hint}</p> : null
 }
 
 function PositionHud({ position, distance }: { position: Vector3 | null; distance: number | null }) {

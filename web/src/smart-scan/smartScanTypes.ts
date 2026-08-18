@@ -3,7 +3,7 @@ import type { OrientationReading } from '../sensors/orientationService'
 
 export type CapabilityStatus = 'checking' | 'ready' | 'limited' | 'unavailable' | 'permission-denied'
 export type SpatialMode = 'ar' | 'limited'
-export type SpatialTrackingState = 'INITIALIZING' | 'STARTING' | 'SEARCHING' | 'ACTIVE' | 'WEAK' | 'CALIBRATING' | 'LOST' | 'LIMITED'
+export type SpatialTrackingState = 'INITIALIZING' | 'STARTING' | 'SEARCHING' | 'ACTIVE' | 'WEAK' | 'CALIBRATING' | 'RECOVERING' | 'LOST' | 'LIMITED'
 
 export type Vector3 = { x: number; y: number; z: number }
 

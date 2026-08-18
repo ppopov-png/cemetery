@@ -17,7 +17,10 @@ export class VisionSpatialProvider implements SpatialProvider {
   private state: SpatialTrackingState = 'INITIALIZING'
   private pose: SpatialPose | null = null
   private relativePosition = { x: 0, y: 0, z: 0 }
-  private latest: VisionFrameResult = { features: [], featureCount: 0, matchedFeatureCount: 0, inlierCount: 0, inlierRatio: 0, motion: { x: 0, y: 0 }, processingMs: 0 }
+  private smoothedMotion = { x: 0, y: 0 }
+  private lostFrames = 0
+  private recoveryFrames = 0
+  private latest: VisionFrameResult = { features: [], featureCount: 0, matchedFeatureCount: 0, inlierCount: 0, inlierRatio: 0, spatialCoverage: 0, parallaxPx: 0, motion: { x: 0, y: 0 }, blurScore: 0, exposureMean: 0, frameUsable: false, intrinsics: { fx: 0, fy: 0, cx: 0, cy: 0, quality: 'estimated', width: 320, height: 240 }, processingMs: 0, trackingConfidence: 0 }
   private sampleCount = 0
   private startedAt = 0
   private readonly scaleEstimator = new ScaleEstimator()
@@ -54,6 +57,9 @@ export class VisionSpatialProvider implements SpatialProvider {
     this.worker?.terminate()
     this.worker = null
     this.previousFeatures = []
+    this.smoothedMotion = { x: 0, y: 0 }
+    this.lostFrames = 0
+    this.recoveryFrames = 0
     this.video?.pause()
     this.video = null
     this.canvas = null
@@ -67,15 +73,17 @@ export class VisionSpatialProvider implements SpatialProvider {
   resetVisionOrigin() {
     this.relativePosition = { x: 0, y: 0, z: 0 }
     this.pose = null
-    this.latest = { features: [], featureCount: 0, matchedFeatureCount: 0, inlierCount: 0, inlierRatio: 0, motion: { x: 0, y: 0 }, processingMs: 0 }
+    this.latest = { ...this.latest, features: [], featureCount: 0, matchedFeatureCount: 0, inlierCount: 0, inlierRatio: 0, spatialCoverage: 0, parallaxPx: 0, motion: { x: 0, y: 0 }, trackingConfidence: 0 }
     this.state = 'INITIALIZING'
+    this.previousFeatures = []
+    this.worker?.postMessage({ reset: true })
     this.publish()
     this.scheduleSample()
   }
 
   getPose() { return this.pose }
   getTrackingState() { return this.state }
-  getAccuracy(): SpatialAccuracy { return { level: this.latest.inlierRatio > 0.35 ? 'medium' : 'low', confidence: this.latest.inlierRatio, source: 'Monocular visual tracking; metric scale is not calibrated' } }
+  getAccuracy(): SpatialAccuracy { return { level: this.latest.trackingConfidence > 0.65 ? 'medium' : 'low', confidence: this.latest.trackingConfidence, source: 'Monocular visual tracking; metric scale is not calibrated' } }
   getCapabilities(): SpatialCapabilities { return { webxr: false, immersiveAr: false, hitTest: false, depth: false, camera: true, orientation: true, gps: false } }
   subscribePose(listener: (pose: SpatialPose | null) => void) { this.poseListeners.add(listener); return () => this.poseListeners.delete(listener) }
   subscribeDiagnostics(listener: (diagnostics: SpatialDiagnostics) => void) { this.diagnosticsListeners.add(listener); return () => this.diagnosticsListeners.delete(listener) }
@@ -117,11 +125,21 @@ export class VisionSpatialProvider implements SpatialProvider {
     this.processing = false
     this.latest = result
     this.sampleCount += 1
-    const enoughFeatures = result.featureCount >= 8
-    const enoughInliers = result.inlierCount >= 6 && result.inlierRatio >= 0.25
-    this.state = enoughFeatures && enoughInliers ? 'ACTIVE' : enoughFeatures ? 'WEAK' : 'LOST'
-    if (this.state === 'ACTIVE') {
-      this.relativePosition = { x: this.relativePosition.x - result.motion.x / 320, y: this.relativePosition.y - result.motion.y / 320, z: this.relativePosition.z }
+    const good = result.frameUsable && result.featureCount >= 20 && result.inlierCount >= 12 && result.inlierRatio >= 0.3 && result.spatialCoverage >= 0.25 && result.trackingConfidence >= 0.35
+    const weak = result.frameUsable && result.featureCount >= 12 && result.inlierCount >= 6
+    if (good) {
+      this.state = this.lostFrames > 0 ? 'RECOVERING' : 'ACTIVE'
+      this.lostFrames = 0
+      this.recoveryFrames = this.state === 'RECOVERING' ? this.recoveryFrames + 1 : 0
+      if (this.recoveryFrames >= 2) { this.state = 'ACTIVE'; this.recoveryFrames = 0 }
+      this.smoothedMotion = { x: this.smoothedMotion.x * 0.7 + result.motion.x * 0.3, y: this.smoothedMotion.y * 0.7 + result.motion.y * 0.3 }
+    } else {
+      this.lostFrames += 1
+      this.recoveryFrames = 0
+      this.state = weak ? 'WEAK' : this.lostFrames > 2 ? 'LOST' : 'RECOVERING'
+    }
+    if (good && result.parallaxPx > 0.5) {
+      this.relativePosition = { x: this.relativePosition.x - this.smoothedMotion.x / 320, y: this.relativePosition.y - this.smoothedMotion.y / 320, z: this.relativePosition.z }
       this.pose = { position: this.relativePosition, orientation: { x: 0, y: 0, z: 0, w: 1 }, timestamp: Date.now(), source: 'vision', relativeToOrigin: true, metricScaleAvailable: false }
       this.poseListeners.forEach((listener) => listener(this.pose))
     } else {
@@ -134,7 +152,7 @@ export class VisionSpatialProvider implements SpatialProvider {
   private publish() {
     const elapsed = Math.max(0.001, (performance.now() - this.startedAt) / 1000)
     this.diagnosticsListeners.forEach((listener) => listener({
-      provider: 'Vision', mode: this.mode, trackingState: this.state, accuracy: this.getAccuracy(), featureCount: this.latest.featureCount, matchedFeatureCount: this.latest.matchedFeatureCount, inlierRatio: this.latest.inlierRatio, processingMs: this.latest.processingMs, visionFps: this.sampleCount / elapsed, scaleStatus: this.scaleEstimator.getStatus() === 'UNSCALED' ? 'UNSCALED' : this.scaleEstimator.getStatus(), relativePosition: this.relativePosition, reason: this.state === 'LOST' ? 'Looking for visual features…' : 'Relative visual trajectory; metric scale is unavailable.',
+      provider: 'Vision', mode: this.mode, trackingState: this.state, accuracy: this.getAccuracy(), featureCount: this.latest.featureCount, matchedFeatureCount: this.latest.matchedFeatureCount, inlierRatio: this.latest.inlierRatio, processingMs: this.latest.processingMs, visionFps: this.sampleCount / elapsed, scaleStatus: this.scaleEstimator.getStatus() === 'UNSCALED' ? 'UNSCALED' : this.scaleEstimator.getStatus(), relativePosition: this.relativePosition, trackingConfidence: this.latest.trackingConfidence, parallaxPx: this.latest.parallaxPx, blurScore: this.latest.blurScore, exposureMean: this.latest.exposureMean, intrinsics: this.latest.intrinsics, reason: this.state === 'LOST' ? 'Looking for visual features…' : 'Relative visual trajectory; metric scale is unavailable.',
     }))
   }
 
