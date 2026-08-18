@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { stopCameraStream } from '../camera/cameraService'
 import { subscribeToOrientation, type OrientationReading } from '../sensors/orientationService'
 import type { PreparedSmartScan } from '../smart-scan/prepareSmartScan'
+import type { SpatialDiagnostics } from '../spatial/spatialTypes'
 import type { SmartScanCapabilities, Vector3 } from '../smart-scan/smartScanTypes'
-import type { XRTrackingDiagnostics } from '../xr/xrService'
 
 type SmartScanPageProps = {
   prepared: PreparedSmartScan
@@ -16,6 +16,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
   const [orientation, setOrientation] = useState<OrientationReading>(prepared.capabilities.sensorData.orientation)
   const [position, setPosition] = useState<Vector3 | null>(null)
   const [distance, setDistance] = useState<number | null>(null)
+  const [spatialDiagnostics, setSpatialDiagnostics] = useState<SpatialDiagnostics | null>(prepared.spatialDiagnostics)
 
   useEffect(() => {
     const video = videoRef.current
@@ -25,36 +26,44 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
     }
 
     const unsubscribeOrientation = subscribeToOrientation(setOrientation)
-    prepared.xrTracking?.setOnUpdate(({ position: nextPosition, distanceFromStart }) => {
-      setPosition(nextPosition)
-      setDistance(distanceFromStart)
+    const initialPose = prepared.spatialProvider.getPose()
+    if (initialPose) {
+      setPosition(initialPose.position)
+      setDistance(Math.sqrt(initialPose.position.x ** 2 + initialPose.position.y ** 2 + initialPose.position.z ** 2))
+    }
+    const unsubscribePose = prepared.spatialProvider.subscribePose((pose) => {
+      setPosition(pose?.position ?? null)
+      setDistance(pose ? Math.sqrt(pose.position.x ** 2 + pose.position.y ** 2 + pose.position.z ** 2) : null)
     })
-    prepared.xrTracking?.setOnDiagnostics((diagnostics) => updateXRDiagnostics(diagnostics))
+    const unsubscribeDiagnostics = prepared.spatialProvider.subscribeDiagnostics((diagnostics) => updateSpatialDiagnostics(diagnostics))
 
     return () => {
       unsubscribeOrientation()
+      unsubscribePose()
+      unsubscribeDiagnostics()
       if (video) video.srcObject = null
-      if (prepared.cameraStream) stopCameraStream(prepared.cameraStream)
-      void prepared.xrTracking?.stop()
+      void prepared.spatialProvider.stop()
+      if (prepared.cameraStream && prepared.spatialProvider.mode === 'sensor-limited') stopCameraStream(prepared.cameraStream)
     }
   }, [prepared])
 
-  const updateXRDiagnostics = (diagnostics: XRTrackingDiagnostics) => {
+  const updateSpatialDiagnostics = (diagnostics: SpatialDiagnostics) => {
+    setSpatialDiagnostics(diagnostics)
     setCapabilities((current) => ({
       ...current,
-      trackingState: diagnostics.state,
-      spatialMode: diagnostics.state === 'ACTIVE' ? 'ar' : 'limited',
-      referenceSpaceType: diagnostics.referenceSpaceType,
-      xrSessionActive: diagnostics.sessionActive,
-      xrPoseActive: diagnostics.poseActive,
-      xrFrames: diagnostics.xrFrames,
-      trackingFrames: diagnostics.trackingFrames,
-      lastXRFrameAt: diagnostics.lastXRFrameAt,
-      webglStatus: diagnostics.webglStatus,
-      xrCompatibleGL: diagnostics.xrCompatibleGL,
-      baseLayerActive: diagnostics.baseLayerActive,
-      xrVisibility: diagnostics.xrVisibility,
-      xrFrameLoopError: diagnostics.xrFrameLoopError,
+      trackingState: diagnostics.trackingState,
+      spatialMode: diagnostics.mode.startsWith('xr-') && diagnostics.trackingState === 'ACTIVE' ? 'ar' : 'limited',
+      referenceSpaceType: diagnostics.referenceSpaceType ?? null,
+      xrSessionActive: diagnostics.xrSessionActive ?? false,
+      xrPoseActive: diagnostics.xrPoseActive ?? false,
+      xrFrames: diagnostics.xrFrames ?? 0,
+      trackingFrames: diagnostics.trackingFrames ?? 0,
+      lastXRFrameAt: diagnostics.lastXRFrameAt ?? null,
+      webglStatus: diagnostics.webglStatus ?? 'ERROR',
+      xrCompatibleGL: diagnostics.xrCompatibleGL ?? false,
+      baseLayerActive: diagnostics.baseLayerActive ?? false,
+      xrVisibility: (diagnostics.xrVisibility as SmartScanCapabilities['xrVisibility']) ?? 'unknown',
+      xrFrameLoopError: diagnostics.xrFrameLoopError ?? null,
     }))
   }
 
@@ -87,7 +96,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
         </section>
         <div className="scan-reticle" aria-hidden="true">+</div>
         {capabilities.trackingState === 'ACTIVE' && <PositionHud position={position} distance={distance} />}
-        <XRDiagnostics capabilities={capabilities} />
+        <SpatialDiagnosticsPanel capabilities={capabilities} diagnostics={spatialDiagnostics} />
         <footer className="scan-footer">
           <p>Point the camera at an object</p>
           <button className="finish-button" type="button" onClick={onExit}>Finish</button>
@@ -97,9 +106,11 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
   )
 }
 
-function XRDiagnostics({ capabilities }: { capabilities: SmartScanCapabilities }) {
+function SpatialDiagnosticsPanel({ capabilities, diagnostics }: { capabilities: SmartScanCapabilities; diagnostics: SpatialDiagnostics | null }) {
   return (
     <div className="xr-diagnostics">
+      <span>Provider: {diagnostics?.provider ?? '—'}</span>
+      <span>Mode: {diagnostics?.mode ?? '—'}</span>
       <span>XR session: {capabilities.xrSessionActive ? 'ACTIVE' : 'INACTIVE'}</span>
       <span>Reference space: {capabilities.referenceSpaceType ?? '—'}</span>
       <span>XR pose: {capabilities.xrPoseActive ? 'ACTIVE' : 'NULL'}</span>
@@ -110,6 +121,9 @@ function XRDiagnostics({ capabilities }: { capabilities: SmartScanCapabilities }
       <span>XR frames: {capabilities.xrFrames}</span>
       <span>Tracking frames: {capabilities.trackingFrames}</span>
       <span>Last XR frame: {formatTimestamp(capabilities.lastXRFrameAt)}</span>
+      {diagnostics?.featureCount !== undefined && <span>Features: {diagnostics.featureCount} / Matches: {diagnostics.matchedFeatureCount ?? 0}</span>}
+      {diagnostics?.visionFps !== undefined && <span>Vision FPS: {diagnostics.visionFps.toFixed(1)}</span>}
+      {diagnostics?.scaleStatus && <span>Scale: {diagnostics.scaleStatus}</span>}
       {capabilities.xrFrameLoopError && <span>{capabilities.xrFrameLoopError}</span>}
       {capabilities.xrError && <span>{capabilities.xrError.name}: {capabilities.xrError.message}</span>}
     </div>
