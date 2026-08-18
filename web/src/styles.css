@@ -69,6 +69,44 @@ h1 {
 .button-arrow { font-size: 1.5rem; }
 .page-mark { position: absolute; right: 24px; bottom: max(28px, env(safe-area-inset-bottom)); color: #43554c; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.2em; }
 
+.device-check-page {
+  width: min(100%, 720px);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: max(22px, env(safe-area-inset-top)) 20px max(32px, env(safe-area-inset-bottom));
+}
+
+.diagnostic-header { padding-bottom: 28px; }
+.back-button { padding: 8px 0; border: 0; color: #b7cf9c; background: transparent; cursor: pointer; font-weight: 700; }
+.diagnostic-header .eyebrow { margin: 28px 0 14px; }
+.diagnostic-header h1 { max-width: none; font-size: clamp(2.8rem, 14vw, 5rem); text-transform: uppercase; }
+.diagnostic-intro { margin: 18px 0 0; color: #a6b1aa; }
+
+.status-list { border-top: 1px solid #34443d; }
+.status-row { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #34443d; }
+.status-row strong { display: block; font-size: 1rem; }
+.status-row small { display: block; max-width: 260px; margin-top: 4px; color: #8d9b93; font-size: 0.75rem; line-height: 1.35; }
+.status-symbol { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border-radius: 50%; font-weight: 800; }
+.status-supported, .status-ok { color: #101615; background: #b7cf9c; }
+.status-unsupported, .status-error { color: #f0c0a9; background: #4b302c; }
+.status-pending { color: #101615; background: #e7c878; }
+
+.test-actions { display: grid; gap: 12px; padding: 28px 0; }
+.test-button { min-height: 58px; border: 1px solid #61756a; border-radius: 999px; color: #f2f5ed; background: #1a2521; cursor: pointer; font-weight: 700; }
+.test-button:active { transform: scale(0.98); }
+.test-button:disabled { cursor: wait; opacity: 0.55; }
+.test-button:focus-visible, .back-button:focus-visible { outline: 3px solid #b7cf9c; outline-offset: 4px; }
+
+.camera-preview-wrap { margin-bottom: 24px; }
+.camera-preview { display: block; width: 100%; max-height: 230px; border-radius: 18px; background: #070b0a; object-fit: cover; }
+.preview-note { margin: 10px 0 0; color: #a6b1aa; font-size: 0.8rem; }
+.diagnostic-details { padding: 8px 0 30px; }
+.diagnostic-details h2 { margin: 0 0 14px; color: #b7cf9c; font-size: 0.78rem; letter-spacing: 0.15em; text-transform: uppercase; }
+.diagnostic-details dl { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin: 0; overflow: hidden; border: 1px solid #34443d; border-radius: 14px; }
+.diagnostic-details dl > div { padding: 12px; background: #151e1b; }
+.diagnostic-details dt { color: #8d9b93; font-size: 0.72rem; }
+.diagnostic-details dd { margin: 5px 0 0; overflow-wrap: anywhere; font-size: 0.85rem; }
+
 @media (min-width: 640px) {
   .home-page { padding-inline: 8vw; }
   .intro { font-size: 1.1rem; }
