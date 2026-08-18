@@ -3,6 +3,7 @@ import { stopCameraStream } from '../camera/cameraService'
 import { subscribeToOrientation, type OrientationReading } from '../sensors/orientationService'
 import type { PreparedSmartScan } from '../smart-scan/prepareSmartScan'
 import type { SmartScanCapabilities, Vector3 } from '../smart-scan/smartScanTypes'
+import type { XRTrackingDiagnostics } from '../xr/xrService'
 
 type SmartScanPageProps = {
   prepared: PreparedSmartScan
@@ -27,6 +28,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
       setPosition(nextPosition)
       setDistance(distanceFromStart)
     })
+    prepared.xrTracking?.setOnDiagnostics((diagnostics) => updateXRDiagnostics(diagnostics))
 
     return () => {
       unsubscribeOrientation()
@@ -36,6 +38,19 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
     }
   }, [prepared])
 
+  const updateXRDiagnostics = (diagnostics: XRTrackingDiagnostics) => {
+    setCapabilities((current) => ({
+      ...current,
+      trackingState: diagnostics.state,
+      spatialMode: diagnostics.state === 'ACTIVE' ? 'ar' : 'limited',
+      referenceSpaceType: diagnostics.referenceSpaceType,
+      xrSessionActive: diagnostics.sessionActive,
+      xrPoseActive: diagnostics.poseActive,
+      xrFrames: diagnostics.xrFrames,
+      trackingFrames: diagnostics.trackingFrames,
+    }))
+  }
+
   useEffect(() => {
     setCapabilities((current) => ({
       ...current,
@@ -43,7 +58,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
     }))
   }, [orientation, position, distance])
 
-  const spatialMode = capabilities.spatialMode === 'ar' ? 'AR' : 'LIMITED'
+  const trackingLabel = capabilities.trackingState
   const gpsText = capabilities.sensorData.location
     ? `${capabilities.sensorData.location.accuracy.toFixed(1)} m`
     : 'Unavailable'
@@ -55,21 +70,36 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
       <div className="smart-scan-hud">
         <header className="scan-topbar">
           <div><p className="scan-kicker">Cemetery Mapper</p><h1>Smart Scan</h1></div>
-          <span className={`spatial-pill spatial-${capabilities.spatialMode}`}>Spatial tracking: {spatialMode}</span>
+          <span className={`spatial-pill spatial-${capabilities.trackingState.toLowerCase()}`}>Spatial tracking: {trackingLabel}</span>
         </header>
         <section className="scan-diagnostics" aria-label="Smart Scan status">
           <span>GPS: {gpsText}</span>
           <span>Heading: {formatHeading(capabilities.sensorData.location?.heading)}</span>
           <span>Orientation: {capabilities.orientation === 'ready' ? 'OK' : 'LIMITED'}</span>
+          <span>Tracking: {trackingLabel}</span>
         </section>
         <div className="scan-reticle" aria-hidden="true">+</div>
-        {capabilities.spatialMode === 'ar' && <PositionHud position={position} distance={distance} />}
+        {capabilities.trackingState === 'ACTIVE' && <PositionHud position={position} distance={distance} />}
+        <XRDiagnostics capabilities={capabilities} />
         <footer className="scan-footer">
           <p>Point the camera at an object</p>
           <button className="finish-button" type="button" onClick={onExit}>Finish</button>
         </footer>
       </div>
     </main>
+  )
+}
+
+function XRDiagnostics({ capabilities }: { capabilities: SmartScanCapabilities }) {
+  return (
+    <div className="xr-diagnostics">
+      <span>XR session: {capabilities.xrSessionActive ? 'ACTIVE' : 'INACTIVE'}</span>
+      <span>Reference space: {capabilities.referenceSpaceType ?? '—'}</span>
+      <span>XR pose: {capabilities.xrPoseActive ? 'ACTIVE' : 'NULL'}</span>
+      <span>XR frames: {capabilities.xrFrames}</span>
+      <span>Tracking frames: {capabilities.trackingFrames}</span>
+      {capabilities.xrError && <span>{capabilities.xrError.name}: {capabilities.xrError.message}</span>}
+    </div>
   )
 }
 
