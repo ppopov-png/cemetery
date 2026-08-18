@@ -1,0 +1,76 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f2f5ed;
+  background: #101615;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { min-height: 100%; margin: 0; }
+
+body { min-width: 320px; overflow-x: hidden; }
+
+button { font: inherit; }
+
+.home-page {
+  position: relative;
+  display: flex;
+  min-height: 100svh;
+  align-items: center;
+  overflow: hidden;
+  padding: max(32px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom));
+  background: radial-gradient(circle at 88% 8%, #253832 0, #101615 45%);
+}
+
+.hero-content { width: min(100%, 520px); margin: 0 auto; }
+
+.eyebrow {
+  margin: 0 0 20px;
+  color: #b7cf9c;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+h1 {
+  max-width: 8ch;
+  margin: 0;
+  font-size: clamp(3.5rem, 18vw, 7rem);
+  font-weight: 600;
+  letter-spacing: -0.08em;
+  line-height: 0.88;
+}
+
+.intro { margin: 28px 0 42px; color: #a6b1aa; font-size: 1rem; }
+
+.device-check-button {
+  display: flex;
+  width: 100%;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px 0 26px;
+  border: 1px solid #b7cf9c;
+  border-radius: 999px;
+  color: #101615;
+  background: #b7cf9c;
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.device-check-button:active { transform: scale(0.98); }
+.device-check-button:focus-visible { outline: 3px solid #f2f5ed; outline-offset: 4px; }
+.button-arrow { font-size: 1.5rem; }
+.page-mark { position: absolute; right: 24px; bottom: max(28px, env(safe-area-inset-bottom)); color: #43554c; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.2em; }
+
+@media (min-width: 640px) {
+  .home-page { padding-inline: 8vw; }
+  .intro { font-size: 1.1rem; }
+  .device-check-button { max-width: 400px; }
+}
