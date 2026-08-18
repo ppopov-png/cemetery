@@ -45,6 +45,8 @@ h1 {
 }
 
 .intro { margin: 28px 0 42px; color: #a6b1aa; font-size: 1rem; }
+.auto-check-note { margin: 14px 0 0; color: #7f9186; font-size: 0.75rem; }
+.diagnostics-link { margin-top: 26px; padding: 8px 0; border: 0; color: #8fae84; background: transparent; cursor: pointer; font-size: 0.78rem; font-weight: 700; }
 
 .device-check-button {
   display: flex;
@@ -106,6 +108,34 @@ h1 {
 .diagnostic-details dl > div { padding: 12px; background: #151e1b; }
 .diagnostic-details dt { color: #8d9b93; font-size: 0.72rem; }
 .diagnostic-details dd { margin: 5px 0 0; overflow-wrap: anywhere; font-size: 0.85rem; }
+
+.startup-page { min-height: 100svh; padding: max(22px, env(safe-area-inset-top)) 20px max(32px, env(safe-area-inset-bottom)); }
+.startup-content { width: min(100%, 560px); margin: 14vh auto 0; }
+.startup-content h1 { max-width: none; font-size: clamp(3rem, 14vw, 5.5rem); }
+.startup-status { margin-top: 42px; border-top: 1px solid #34443d; }
+.startup-row { display: flex; min-height: 62px; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #34443d; }
+.startup-row strong { display: block; }
+.startup-row small { display: block; max-width: 270px; margin-top: 4px; color: #a6b1aa; font-size: 0.75rem; line-height: 1.35; }
+.startup-error { margin-top: 28px; padding: 18px; border: 1px solid #70473d; border-radius: 16px; color: #f0c0a9; background: #251917; }
+.startup-error p { margin: 8px 0 16px; color: #d5a99b; font-size: 0.85rem; }
+
+.smart-scan-page { position: relative; min-height: 100svh; overflow: hidden; background: #070b0a; }
+.smart-scan-camera { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.smart-scan-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7, 11, 10, 0.8), transparent 35%, transparent 62%, rgba(7, 11, 10, 0.9)); }
+.smart-scan-hud { position: relative; z-index: 1; display: flex; min-height: 100svh; flex-direction: column; padding: max(22px, env(safe-area-inset-top)) 20px max(22px, env(safe-area-inset-bottom)); }
+.scan-topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.scan-kicker { margin: 0 0 5px; color: #b7cf9c; font-size: 0.67rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
+.scan-topbar h1 { margin: 0; font-size: 1.65rem; letter-spacing: -0.04em; text-transform: uppercase; }
+.spatial-pill { padding: 7px 10px; border: 1px solid rgba(183, 207, 156, 0.7); border-radius: 999px; color: #b7cf9c; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.06em; white-space: nowrap; }
+.spatial-limited { border-color: #e7c878; color: #e7c878; }
+.scan-diagnostics { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 22px; color: #e4e9df; font-size: 0.75rem; font-weight: 700; }
+.scan-reticle { position: absolute; top: 50%; left: 50%; color: rgba(242, 245, 237, 0.8); font-size: 2.2rem; font-weight: 300; transform: translate(-50%, -50%); }
+.position-hud { position: absolute; right: 20px; bottom: 126px; display: grid; gap: 4px; padding: 12px; border: 1px solid rgba(183, 207, 156, 0.35); border-radius: 12px; color: #e4e9df; background: rgba(7, 11, 10, 0.5); font-size: 0.72rem; backdrop-filter: blur(8px); }
+.position-hud strong { margin-bottom: 3px; color: #b7cf9c; }
+.scan-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: auto; }
+.scan-footer p { margin: 0; color: #e4e9df; font-size: 0.8rem; }
+.finish-button { min-width: 112px; min-height: 48px; border: 1px solid #b7cf9c; border-radius: 999px; color: #101615; background: #b7cf9c; cursor: pointer; font-weight: 800; }
+.finish-button:focus-visible { outline: 3px solid #f2f5ed; outline-offset: 4px; }
 
 @media (min-width: 640px) {
   .home-page { padding-inline: 8vw; }

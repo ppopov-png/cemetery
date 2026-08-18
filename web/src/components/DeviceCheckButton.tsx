@@ -5,7 +5,7 @@ type DeviceCheckButtonProps = {
 export function DeviceCheckButton({ onClick }: DeviceCheckButtonProps) {
   return (
     <button className="device-check-button" type="button" onClick={onClick}>
-      <span>Device Check</span>
+      <span>Start Smart Scan</span>
       <span className="button-arrow" aria-hidden="true">↗</span>
     </button>
   )

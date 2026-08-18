@@ -23,6 +23,8 @@ export async function testCamera(): Promise<CameraTestResult> {
   return { stream }
 }
 
+export const openRearCamera = testCamera
+
 export function stopCameraStream(stream: MediaStream) {
   stream.getTracks().forEach((track) => track.stop())
 }

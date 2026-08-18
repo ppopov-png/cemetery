@@ -150,6 +150,7 @@ function DiagnosticDetails({ location, orientation }: { location: LocationReadin
         <DataItem label="Longitude" value={location ? location.longitude.toFixed(6) : '—'} />
         <DataItem label="Accuracy" value={location ? `${location.accuracy.toFixed(1)} m` : '—'} />
         <DataItem label="Altitude" value={location?.altitude == null ? '—' : `${location.altitude.toFixed(1)} m`} />
+        <DataItem label="Heading" value={location?.heading == null ? '—' : `${location.heading.toFixed(0)}°`} />
         <DataItem label="Timestamp" value={location ? new Date(location.timestamp).toLocaleString() : '—'} />
         <DataItem label="Alpha" value={formatAngle(orientation.alpha)} />
         <DataItem label="Beta" value={formatAngle(orientation.beta)} />

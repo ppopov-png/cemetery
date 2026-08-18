@@ -3,6 +3,7 @@ export type LocationReading = {
   longitude: number
   accuracy: number
   altitude: number | null
+  heading: number | null
   timestamp: number
 }
 
@@ -10,7 +11,7 @@ export function isGeolocationSupported() {
   return 'geolocation' in navigator
 }
 
-export function getCurrentLocation(): Promise<LocationReading> {
+export function getCurrentLocation(timeout = 10000): Promise<LocationReading> {
   return new Promise((resolve, reject) => {
     if (!isGeolocationSupported()) {
       reject(new Error('Geolocation API is not available in this browser.'))
@@ -23,10 +24,11 @@ export function getCurrentLocation(): Promise<LocationReading> {
         longitude: coords.longitude,
         accuracy: coords.accuracy,
         altitude: coords.altitude,
+        heading: coords.heading,
         timestamp,
       }),
       (error) => reject(new Error(getGeolocationError(error))),
-      { enableHighAccuracy: true },
+      { enableHighAccuracy: true, timeout, maximumAge: 0 },
     )
   })
 }
