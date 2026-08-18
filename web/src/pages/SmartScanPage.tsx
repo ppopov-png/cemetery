@@ -1,207 +1,95 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { stopCameraStream } from '../camera/cameraService'
 import { subscribeToOrientation, type OrientationReading } from '../sensors/orientationService'
 import type { PreparedSmartScan } from '../smart-scan/prepareSmartScan'
-import type { SpatialDiagnostics } from '../spatial/spatialTypes'
+import type { SpatialDiagnostics, SpatialPose } from '../spatial/spatialTypes'
 import type { SmartScanCapabilities, Vector3 } from '../smart-scan/smartScanTypes'
+import { ObjectTracker } from '../smart-scan/object-tracking/ObjectTracker'
+import { objectTrackingConfig } from '../smart-scan/object-tracking/objectTrackingConfig'
+import type { BoundingBox, ObjectTrackingResult } from '../smart-scan/object-tracking/objectTrackingTypes'
+import { evaluateFrameQuality, type FrameQualityResult } from '../smart-scan/capture/frameQualityEvaluator'
+import { ViewDiversityEvaluator, type ViewSignature } from '../smart-scan/capture/viewDiversityEvaluator'
+import type { CapturedFrame, RelativeView, ScanSession } from '../smart-scan/capture/scanSessionTypes'
 
-type SmartScanPageProps = {
-  prepared: PreparedSmartScan
-  onExit: () => void
-}
+type ScanState = 'SEARCHING' | 'OBJECT_LOCK_REQUESTED' | 'LOCKING' | 'LOCKED' | 'CAPTURING' | 'OBJECT_LOST' | 'SCAN_COMPLETE' | 'FAILED'
+type SmartScanPageProps = { prepared: PreparedSmartScan; onExit: () => void }
+const targetFrameCount = 6
 
 export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null); const canvasRef = useRef<HTMLCanvasElement>(null)
+  const trackerRef = useRef(new ObjectTracker()); const diversityRef = useRef(new ViewDiversityEvaluator()); const timerRef = useRef<number | null>(null); const sessionRef = useRef<ScanSession | null>(null)
   const [capabilities, setCapabilities] = useState<SmartScanCapabilities>(prepared.capabilities)
   const [orientation, setOrientation] = useState<OrientationReading>(prepared.capabilities.sensorData.orientation)
-  const [position, setPosition] = useState<Vector3 | null>(null)
-  const [distance, setDistance] = useState<number | null>(null)
-  const [spatialDiagnostics, setSpatialDiagnostics] = useState<SpatialDiagnostics | null>(prepared.spatialDiagnostics)
+  const [position, setPosition] = useState<Vector3 | null>(null); const [pose, setPose] = useState<SpatialPose | null>(prepared.spatialProvider.getPose())
+  const [spatialDiagnostics, setSpatialDiagnostics] = useState<SpatialDiagnostics | null>(prepared.spatialDiagnostics); const [scanState, setScanState] = useState<ScanState>('SEARCHING')
+  const [tracking, setTracking] = useState<ObjectTrackingResult | null>(null); const [box, setBox] = useState<BoundingBox | null>(null); const [quality, setQuality] = useState<FrameQualityResult | null>(null); const [session, setSession] = useState<ScanSession | null>(null); const [message, setMessage] = useState('Наведите камеру на объект')
 
   useEffect(() => {
     const video = videoRef.current
-    if (video && prepared.cameraStream) {
-      video.srcObject = prepared.cameraStream
-      void video.play().catch(() => undefined)
-    }
-
+    if (video && prepared.cameraStream) { video.srcObject = prepared.cameraStream; void video.play().catch(() => undefined) }
     const unsubscribeOrientation = subscribeToOrientation(setOrientation)
-    const initialPose = prepared.spatialProvider.getPose()
-    if (initialPose) {
-      setPosition(initialPose.position)
-      setDistance(Math.sqrt(initialPose.position.x ** 2 + initialPose.position.y ** 2 + initialPose.position.z ** 2))
-    }
-    const unsubscribePose = prepared.spatialProvider.subscribePose((pose) => {
-      setPosition(pose?.position ?? null)
-      setDistance(pose ? Math.sqrt(pose.position.x ** 2 + pose.position.y ** 2 + pose.position.z ** 2) : null)
-    })
-    const unsubscribeDiagnostics = prepared.spatialProvider.subscribeDiagnostics((diagnostics) => updateSpatialDiagnostics(diagnostics))
-
-    return () => {
-      unsubscribeOrientation()
-      unsubscribePose()
-      unsubscribeDiagnostics()
-      if (video) video.srcObject = null
-      void prepared.spatialProvider.stop()
-      if (prepared.cameraStream && prepared.spatialProvider.mode === 'sensor-limited') stopCameraStream(prepared.cameraStream)
-    }
+    const unsubscribePose = prepared.spatialProvider.subscribePose((nextPose) => { setPose(nextPose); setPosition(nextPose?.position ?? null) })
+    const unsubscribeDiagnostics = prepared.spatialProvider.subscribeDiagnostics((diagnostics) => updateSpatialDiagnostics(diagnostics, setSpatialDiagnostics, setCapabilities))
+    return () => { unsubscribeOrientation(); unsubscribePose(); unsubscribeDiagnostics(); stopSampling(timerRef); trackerRef.current.reset(); diversityRef.current.reset(); if (video) video.srcObject = null; void prepared.spatialProvider.stop(); if (prepared.cameraStream && prepared.spatialProvider.mode === 'sensor-limited') stopCameraStream(prepared.cameraStream) }
   }, [prepared])
 
-  const updateSpatialDiagnostics = (diagnostics: SpatialDiagnostics) => {
-    setSpatialDiagnostics(diagnostics)
-    setCapabilities((current) => ({
-      ...current,
-      trackingState: diagnostics.trackingState,
-      spatialMode: diagnostics.mode.startsWith('xr-') && diagnostics.trackingState === 'ACTIVE' ? 'ar' : 'limited',
-      referenceSpaceType: diagnostics.referenceSpaceType ?? null,
-      xrSessionActive: diagnostics.xrSessionActive ?? false,
-      xrPoseActive: diagnostics.xrPoseActive ?? false,
-      xrFrames: diagnostics.xrFrames ?? 0,
-      trackingFrames: diagnostics.trackingFrames ?? 0,
-      lastXRFrameAt: diagnostics.lastXRFrameAt ?? null,
-      webglStatus: diagnostics.webglStatus ?? 'ERROR',
-      xrCompatibleGL: diagnostics.xrCompatibleGL ?? false,
-      baseLayerActive: diagnostics.baseLayerActive ?? false,
-      xrVisibility: (diagnostics.xrVisibility as SmartScanCapabilities['xrVisibility']) ?? 'unknown',
-      xrFrameLoopError: diagnostics.xrFrameLoopError ?? null,
-    }))
+  const lockObject = () => {
+    if (!prepared.cameraStream || !videoRef.current) { setScanState('FAILED'); setMessage('Camera frames are unavailable in this mode'); return }
+    setScanState('OBJECT_LOCK_REQUESTED')
+    const roi = { x: (1 - objectTrackingConfig.roiWidth) / 2, y: (1 - objectTrackingConfig.roiHeight) / 2, width: objectTrackingConfig.roiWidth, height: objectTrackingConfig.roiHeight }
+    const image = readFrame(videoRef.current, canvasRef.current)
+    if (!image) { setScanState('FAILED'); setMessage('Camera frame is not ready'); return }
+    setScanState('LOCKING'); const result = trackerRef.current.lock(roi, image); setBox(roi); setTracking(result); diversityRef.current.reset()
+    if (result.featureCount < objectTrackingConfig.minFeatures) { setScanState('FAILED'); setMessage('Недостаточно визуальных ориентиров'); return }
+    setScanState('LOCKED'); setMessage('Объект зафиксирован'); sessionRef.current = createSession(prepared.spatialProvider.mode); setSession(sessionRef.current); scheduleSample(timerRef, sampleFrame)
   }
 
-  useEffect(() => {
-    setCapabilities((current) => ({
-      ...current,
-      sensorData: { ...current.sensorData, orientation, position, distanceFromStart: distance },
-    }))
-  }, [orientation, position, distance])
-
-  const trackingLabel = spatialDiagnostics?.mode === 'vision' ? 'VISION' : capabilities.trackingState
-  const gpsText = capabilities.sensorData.location
-    ? `${capabilities.sensorData.location.accuracy.toFixed(1)} m`
-    : 'Unavailable'
-  const metricTracking = spatialDiagnostics?.mode.startsWith('xr-') && capabilities.trackingState === 'ACTIVE'
-
-  return (
-    <main className="smart-scan-page">
-      {prepared.cameraStream && <video ref={videoRef} className="smart-scan-camera" autoPlay muted playsInline aria-label="Smart Scan camera" />}
-      <div className="smart-scan-shade" />
-      <div className="smart-scan-hud">
-        <header className="scan-topbar">
-          <div><p className="scan-kicker">Cemetery Mapper</p><h1>Smart Scan</h1></div>
-          <span className={`spatial-pill spatial-${capabilities.trackingState.toLowerCase()}`}>Spatial tracking: {trackingLabel}</span>
-        </header>
-        <section className="scan-diagnostics" aria-label="Smart Scan status">
-          <span>GPS: {gpsText}</span>
-          <span>GPS quality: {getGpsQuality(capabilities.sensorData.location?.accuracy)}</span>
-          <span>Heading: {formatHeading(capabilities.sensorData.location?.heading)}</span>
-          <span>Orientation: {capabilities.orientation === 'ready' ? 'OK' : 'LIMITED'}</span>
-          <span>Tracking: {trackingLabel}</span>
-        </section>
-        <div className="scan-reticle" aria-hidden="true">+</div>
-        {metricTracking && <PositionHud position={position} distance={distance} />}
-        {spatialDiagnostics?.mode === 'vision' && <VisionTrajectoryHud position={spatialDiagnostics.relativePosition} />}
-        {spatialDiagnostics?.mode === 'vision' && <VisionTrackingHint state={spatialDiagnostics.trackingState} />}
-        <SpatialDiagnosticsPanel capabilities={capabilities} diagnostics={spatialDiagnostics} />
-        <footer className="scan-footer">
-          <p>Point the camera at an object</p>
-          <button className="finish-button" type="button" onClick={onExit}>Finish</button>
-        </footer>
-      </div>
-    </main>
-  )
-}
-
-function SpatialDiagnosticsPanel({ capabilities, diagnostics }: { capabilities: SmartScanCapabilities; diagnostics: SpatialDiagnostics | null }) {
-  if (diagnostics?.mode === 'vision') {
-    return (
-      <div className="xr-diagnostics vision-diagnostics">
-        <span>Provider: Vision</span>
-        <span>Tracking: {diagnostics.trackingState}</span>
-        <span>Scale: {diagnostics.scaleStatus ?? 'UNSCALED'}</span>
-        <span>Accuracy: {diagnostics.accuracy?.level.toUpperCase() ?? 'UNKNOWN'}</span>
-        <span>Vision FPS: {diagnostics.visionFps?.toFixed(1) ?? '—'}</span>
-        <span>Features: {diagnostics.featureCount ?? 0}</span>
-        <span>Matches/Inliers: {diagnostics.matchedFeatureCount ?? 0} / {Math.round((diagnostics.inlierRatio ?? 0) * (diagnostics.matchedFeatureCount ?? 0))}</span>
-        <span>Inlier ratio: {((diagnostics.inlierRatio ?? 0) * 100).toFixed(0)}%</span>
-        <span>Confidence: {((diagnostics.trackingConfidence ?? 0) * 100).toFixed(0)}%</span>
-        <span>Parallax: {diagnostics.parallaxPx?.toFixed(1) ?? '—'} px</span>
-        <span>Blur/Exposure: {diagnostics.blurScore?.toFixed(0) ?? '—'} / {diagnostics.exposureMean?.toFixed(0) ?? '—'}</span>
-        <span>Intrinsics: {diagnostics.intrinsics ? `${Math.round(diagnostics.intrinsics.fx)} px @ ${diagnostics.intrinsics.width}×${diagnostics.intrinsics.height}` : '—'}</span>
-        <span>Processing: {diagnostics.processingMs?.toFixed(1) ?? '—'} ms</span>
-        <span>GPS quality: {getGpsQuality(capabilities.sensorData.location?.accuracy)}</span>
-      </div>
-    )
+  const repeat = () => { stopSampling(timerRef); trackerRef.current.reset(); diversityRef.current.reset(); sessionRef.current = null; setSession(null); setBox(null); setTracking(null); setQuality(null); setScanState('SEARCHING'); setMessage('Наведите камеру на объект') }
+  const finish = () => { stopSampling(timerRef); if (sessionRef.current) sessionRef.current.status = 'cancelled'; onExit() }
+  const sampleFrame = () => {
+    const video = videoRef.current; if (!video || (scanState !== 'LOCKED' && scanState !== 'CAPTURING')) return
+    const image = readFrame(video, canvasRef.current); if (!image) { scheduleSample(timerRef, sampleFrame); return }
+    const result = trackerRef.current.update(image); setTracking(result); setBox(result.box)
+    if (result.state === 'LOST') { setScanState('OBJECT_LOST'); setMessage('Верните объект в кадр'); scheduleSample(timerRef, sampleFrame); return }
+    if (result.state === 'WEAK' || result.state === 'RECOVERING') { setMessage('Держите объект в рамке'); scheduleSample(timerRef, sampleFrame); return }
+    setScanState('CAPTURING'); const frameQuality = evaluateFrameQuality(image, result.box, result); setQuality(frameQuality)
+    if (sessionRef.current) { sessionRef.current.candidateFrames += 1; setSession({ ...sessionRef.current }) }
+    if (!frameQuality.accepted) { if (sessionRef.current) { sessionRef.current.rejectedFrames += 1; sessionRef.current.lastRejectReason = frameQuality.rejectReason }; setMessage(qualityMessage(frameQuality.rejectReason)); scheduleSample(timerRef, sampleFrame); return }
+    const signature = createSignature(result.box!, orientation, pose); const diversity = diversityRef.current.evaluate(signature)
+    if (!diversity.accepted) { if (sessionRef.current) { sessionRef.current.rejectedFrames += 1; sessionRef.current.lastRejectReason = 'Similar view' }; setMessage('Измените угол съёмки'); scheduleSample(timerRef, sampleFrame); return }
+    void captureFrame(video, result, frameQuality, signature).then((captured) => {
+      if (!captured || !sessionRef.current) return
+      sessionRef.current.frames.push(captured); sessionRef.current.acceptedFrames += 1; sessionRef.current.viewDiversityScore = diversity.score; diversityRef.current.add(signature, diversity.score); setSession({ ...sessionRef.current })
+      if (sessionRef.current.frames.length >= targetFrameCount) { sessionRef.current.status = 'complete'; sessionRef.current.completedAt = Date.now(); setSession({ ...sessionRef.current }); setScanState('SCAN_COMPLETE'); setMessage('Скан завершён') } else setMessage('Медленно перемещайте телефон вокруг объекта')
+    }).finally(() => { if (sessionRef.current?.status === 'active') scheduleSample(timerRef, sampleFrame) })
   }
-  return (
-    <div className="xr-diagnostics">
-      <span>Provider: {diagnostics?.provider ?? '—'}</span>
-      <span>Mode: {diagnostics?.mode ?? '—'}</span>
-      <span>XR session: {capabilities.xrSessionActive ? 'ACTIVE' : 'INACTIVE'}</span>
-      <span>Reference space: {capabilities.referenceSpaceType ?? '—'}</span>
-      <span>XR pose: {capabilities.xrPoseActive ? 'ACTIVE' : 'NULL'}</span>
-      <span>WebGL: {capabilities.webglStatus}</span>
-      <span>XR compatible GL: {capabilities.xrCompatibleGL ? 'YES' : 'NO'}</span>
-      <span>Base layer: {capabilities.baseLayerActive ? 'ACTIVE' : 'NULL'}</span>
-      <span>XR visibility: {capabilities.xrVisibility}</span>
-      <span>XR frames: {capabilities.xrFrames}</span>
-      <span>Tracking frames: {capabilities.trackingFrames}</span>
-      <span>Last XR frame: {formatTimestamp(capabilities.lastXRFrameAt)}</span>
-      {diagnostics?.featureCount !== undefined && <span>Features: {diagnostics.featureCount} / Matches: {diagnostics.matchedFeatureCount ?? 0}</span>}
-      {diagnostics?.visionFps !== undefined && <span>Vision FPS: {diagnostics.visionFps.toFixed(1)}</span>}
-      {diagnostics?.scaleStatus && <span>Scale: {diagnostics.scaleStatus}</span>}
-      {capabilities.xrFrameLoopError && <span>{capabilities.xrFrameLoopError}</span>}
-      {capabilities.xrError && <span>{capabilities.xrError.name}: {capabilities.xrError.message}</span>}
-    </div>
-  )
+
+  const trackingLabel = spatialDiagnostics?.mode === 'vision' ? 'VISION' : capabilities.trackingState; const metricTracking = spatialDiagnostics?.mode.startsWith('xr-') && capabilities.trackingState === 'ACTIVE'
+  return <main className="smart-scan-page">
+    {prepared.cameraStream && <video ref={videoRef} className="smart-scan-camera" autoPlay muted playsInline aria-label="Smart Scan camera" />}<canvas ref={canvasRef} className="smart-scan-sampler" /><div className="smart-scan-shade" />
+    <div className="smart-scan-hud"><header className="scan-topbar"><div><p className="scan-kicker">Cemetery Mapper</p><h1>Smart Scan</h1></div><span className={`spatial-pill spatial-${capabilities.trackingState.toLowerCase()}`}>Spatial tracking: {trackingLabel}</span></header>
+      <section className="scan-diagnostics" aria-label="Smart Scan status"><span>State: {scanState}</span><span>Object: {tracking?.state ?? 'INITIALIZING'}</span><span>Features: {tracking?.featureCount ?? 0}</span><span>Confidence: {tracking ? `${Math.round(tracking.confidence * 100)}%` : '—'}</span><span>Spatial: {spatialDiagnostics?.scaleStatus ?? 'UNSCALED'}</span></section>
+      <div className="scan-reticle" aria-hidden="true">+</div>{box && scanState !== 'SEARCHING' && scanState !== 'SCAN_COMPLETE' && <div className={`object-box object-box-${tracking?.state.toLowerCase() ?? 'initializing'}`} style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.width * 100}%`, height: `${box.height * 100}%` }}><span>Selected object</span></div>}
+      {metricTracking && <PositionHud position={position} distance={distanceFromOrigin(pose)} />}{spatialDiagnostics?.mode === 'vision' && <VisionTrajectoryHud position={spatialDiagnostics.relativePosition} />}<div className="scan-message">{message}</div>
+      {(scanState === 'SEARCHING' || scanState === 'FAILED' || scanState === 'OBJECT_LOST') && <button className="capture-object-button" type="button" onClick={lockObject}>{scanState === 'OBJECT_LOST' ? 'ЗАФИКСИРОВАТЬ ЗАНОВО' : 'ЗАФИКСИРОВАТЬ ОБЪЕКТ'}</button>}
+      {scanState === 'CAPTURING' && <div className="capture-progress"><strong>{session?.frames.length ?? 0} / {targetFrameCount}</strong><span>Медленно перемещайте телефон вокруг объекта</span><span>{'● '.repeat(session?.frames.length ?? 0)}{'○ '.repeat(targetFrameCount - (session?.frames.length ?? 0))}</span></div>}
+      {scanState === 'SCAN_COMPLETE' && <ScanComplete session={session} onRepeat={repeat} onDone={onExit} />}<SpatialDiagnosticsPanel capabilities={capabilities} diagnostics={spatialDiagnostics} tracking={tracking} quality={quality} session={session} />
+      <footer className="scan-footer"><p>{scanState === 'OBJECT_LOST' ? 'Верните объект в кадр' : 'Камера работает только во время активного Smart Scan'}</p><button className="finish-button" type="button" onClick={finish}>Finish</button></footer>
+    </div></main>
 }
 
-function VisionTrajectoryHud({ position }: { position?: { x: number; y: number; z: number } }) {
-  return (
-    <div className="position-hud vision-position-hud">
-      <strong>Relative trajectory</strong>
-      <span>VX: {formatUnscaled(position?.x)}</span>
-      <span>VY: {formatUnscaled(position?.y)}</span>
-      <span>VZ: {formatUnscaled(position?.z)}</span>
-      <span>Scale: UNSCALED</span>
-    </div>
-  )
-}
-
-function VisionTrackingHint({ state }: { state: SpatialDiagnostics['trackingState'] }) {
-  const hint = state === 'WEAK' ? 'Move the phone more slowly' : state === 'LOST' ? 'Point at a detailed, well-lit surface' : state === 'RECOVERING' || state === 'INITIALIZING' ? 'Looking for visual features…' : null
-  return hint ? <p className="vision-tracking-hint">{hint}</p> : null
-}
-
-function PositionHud({ position, distance }: { position: Vector3 | null; distance: number | null }) {
-  return (
-    <div className="position-hud">
-      <strong>Position</strong>
-      <span>X: {formatMeters(position?.x)}</span>
-      <span>Y: {formatMeters(position?.y)}</span>
-      <span>Z: {formatMeters(position?.z)}</span>
-      <span>From start: {distance == null ? '—' : `${distance.toFixed(2)} m`}</span>
-    </div>
-  )
-}
-
-function formatMeters(value: number | undefined) {
-  return value == null ? 'Unavailable' : `${value.toFixed(2)} m`
-}
-
-function formatUnscaled(value: number | undefined) {
-  return value == null ? '—' : value.toFixed(4)
-}
-
-function getGpsQuality(accuracy: number | undefined) {
-  if (accuracy == null) return 'UNAVAILABLE'
-  if (accuracy <= 10) return 'GOOD'
-  if (accuracy <= 30) return 'POOR'
-  return 'UNUSABLE'
-}
-
-function formatHeading(value: number | null | undefined) {
-  return value == null ? 'Unavailable' : `${value.toFixed(0)}°`
-}
-
-function formatTimestamp(value: number | null) {
-  return value == null ? '—' : new Date(value).toLocaleTimeString()
-}
+function ScanComplete({ session, onRepeat, onDone }: { session: ScanSession | null; onRepeat: () => void; onDone: () => void }) { return <section className="scan-complete"><h2>СКАН ЗАВЕРШЁН</h2><p>Получено {session?.frames.length ?? 0} хороших ракурсов</p><div className="capture-thumbnails">{session?.frames.map((frame) => <img key={frame.id} src={URL.createObjectURL(frame.image)} alt="Captured view" />)}</div><button type="button" onClick={onRepeat}>ПОВТОРИТЬ</button><button type="button" onClick={onDone}>ГОТОВО</button></section> }
+function SpatialDiagnosticsPanel({ capabilities, diagnostics, tracking, quality, session }: { capabilities: SmartScanCapabilities; diagnostics: SpatialDiagnostics | null; tracking: ObjectTrackingResult | null; quality: FrameQualityResult | null; session: ScanSession | null }) { return <div className="xr-diagnostics smart-scan-dev-diagnostics"><span>Scan: {session?.status ?? 'active'}</span><span>Object: {tracking?.state ?? 'INITIALIZING'}</span><span>Object features: {tracking?.featureCount ?? 0}</span><span>Object confidence: {tracking ? `${Math.round(tracking.confidence * 100)}%` : '—'}</span><span>Candidate frames: {session?.candidateFrames ?? 0}</span><span>Accepted frames: {session?.acceptedFrames ?? 0}</span><span>Rejected frames: {session?.rejectedFrames ?? 0}</span><span>Current quality: {quality ? `${Math.round(quality.score * 100)}%` : '—'}</span><span>Last reject: {session?.lastRejectReason ?? quality?.rejectReason ?? '—'}</span><span>View diversity: {session?.viewDiversityScore != null ? `${Math.round(session.viewDiversityScore * 100)}%` : '—'}</span><span>Spatial: {diagnostics?.provider ?? '—'} / {diagnostics?.accuracy?.level ?? '—'}</span><span>Scale: {diagnostics?.scaleStatus ?? 'UNSCALED'}</span><span>GPS quality: {getGpsQuality(capabilities.sensorData.location?.accuracy)}</span></div> }
+async function captureFrame(video: HTMLVideoElement, tracking: ObjectTrackingResult, quality: FrameQualityResult, signature: ViewSignature): Promise<CapturedFrame | null> { if (!tracking.box) return null; const canvas = document.createElement('canvas'); const scale = Math.min(1920 / Math.max(video.videoWidth, video.videoHeight), 1); canvas.width = Math.max(1, Math.round(video.videoWidth * scale)); canvas.height = Math.max(1, Math.round(video.videoHeight * scale)); const context = canvas.getContext('2d'); if (!context) return null; context.drawImage(video, 0, 0, canvas.width, canvas.height); const image = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.88)); if (!image) return null; return { id: crypto.randomUUID(), timestamp: Date.now(), image, width: canvas.width, height: canvas.height, quality, objectBox: tracking.box, objectTrackingConfidence: tracking.confidence, relativeView: classifyView(signature), viewSignature: signature } }
+function readFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement | null) { if (!canvas || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return null; canvas.width = objectTrackingConfig.sampleWidth; canvas.height = objectTrackingConfig.sampleHeight; const context = canvas.getContext('2d', { willReadFrequently: true }); if (!context) return null; context.drawImage(video, 0, 0, canvas.width, canvas.height); return context.getImageData(0, 0, canvas.width, canvas.height) }
+function createSession(mode: 'xr-high' | 'xr-standard' | 'vision' | 'sensor-limited'): ScanSession { return { id: crypto.randomUUID(), startedAt: Date.now(), spatialMode: mode.startsWith('xr-') ? 'ar' : 'limited', frames: [], candidateFrames: 0, acceptedFrames: 0, rejectedFrames: 0, status: 'active' } }
+function createSignature(box: BoundingBox, orientation: OrientationReading, pose: SpatialPose | null): ViewSignature { return { box, orientation: { alpha: orientation.alpha, beta: orientation.beta, gamma: orientation.gamma }, position: pose?.position ?? null } }
+function classifyView(signature: ViewSignature): RelativeView { const dx = signature.box.x + signature.box.width / 2 - 0.5; const dy = signature.box.y + signature.box.height / 2 - 0.5; if (Math.abs(dx) < 0.08 && Math.abs(dy) < 0.08) return 'CENTER'; if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? 'LEFT' : 'RIGHT'; return dy < 0 ? 'HIGH' : 'LOW' }
+function distanceFromOrigin(pose: SpatialPose | null) { return pose ? Math.hypot(pose.position.x, pose.position.y, pose.position.z) : null }
+function qualityMessage(reason?: string) { return reason === 'Too dark' ? 'Слишком темно' : reason === 'Strong overexposure' ? 'Сильный пересвет' : reason === 'Move the phone more slowly' ? 'Двигайте телефон медленнее' : 'Удерживайте объект в рамке' }
+function updateSpatialDiagnostics(diagnostics: SpatialDiagnostics, setDiagnostics: (value: SpatialDiagnostics) => void, setCapabilities: Dispatch<SetStateAction<SmartScanCapabilities>>) { setDiagnostics(diagnostics); setCapabilities((current) => ({ ...current, trackingState: diagnostics.trackingState, spatialMode: diagnostics.mode.startsWith('xr-') && diagnostics.trackingState === 'ACTIVE' ? 'ar' : 'limited', referenceSpaceType: diagnostics.referenceSpaceType ?? null, xrSessionActive: diagnostics.xrSessionActive ?? false, xrPoseActive: diagnostics.xrPoseActive ?? false, xrFrames: diagnostics.xrFrames ?? 0, trackingFrames: diagnostics.trackingFrames ?? 0, lastXRFrameAt: diagnostics.lastXRFrameAt ?? null, webglStatus: diagnostics.webglStatus ?? 'ERROR', xrCompatibleGL: diagnostics.xrCompatibleGL ?? false, baseLayerActive: diagnostics.baseLayerActive ?? false, xrVisibility: (diagnostics.xrVisibility as SmartScanCapabilities['xrVisibility']) ?? 'unknown', xrFrameLoopError: diagnostics.xrFrameLoopError ?? null })) }
+function getGpsQuality(accuracy: number | undefined) { return accuracy == null ? 'UNAVAILABLE' : accuracy <= 10 ? 'GOOD' : accuracy <= 30 ? 'POOR' : 'UNUSABLE' }
+function stopSampling(timerRef: MutableRefObject<number | null>) { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null }
+function scheduleSample(timerRef: MutableRefObject<number | null>, sample: () => void) { stopSampling(timerRef); timerRef.current = window.setTimeout(sample, 120) }
+function PositionHud({ position, distance }: { position: Vector3 | null; distance: number | null }) { return <div className="position-hud"><strong>Position</strong><span>X: {position ? `${position.x.toFixed(2)} m` : 'Unavailable'}</span><span>Y: {position ? `${position.y.toFixed(2)} m` : 'Unavailable'}</span><span>Z: {position ? `${position.z.toFixed(2)} m` : 'Unavailable'}</span><span>From start: {distance == null ? '—' : `${distance.toFixed(2)} m`}</span></div> }
+function VisionTrajectoryHud({ position }: { position?: Vector3 }) { return <div className="position-hud vision-position-hud"><strong>Relative trajectory</strong><span>VX: {position?.x.toFixed(4) ?? '—'}</span><span>VY: {position?.y.toFixed(4) ?? '—'}</span><span>VZ: {position?.z.toFixed(4) ?? '—'}</span><span>Scale: UNSCALED</span></div> }

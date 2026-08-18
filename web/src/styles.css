@@ -138,6 +138,21 @@ h1 {
 .xr-diagnostics { position: absolute; right: 20px; bottom: 76px; display: grid; gap: 3px; max-width: calc(100% - 40px); color: rgba(242, 245, 237, 0.65); font-size: 0.58rem; text-align: right; }
 .vision-diagnostics { left: 20px; right: auto; bottom: 18px; text-align: left; }
 .vision-tracking-hint { position: absolute; left: 20px; right: 20px; bottom: 126px; margin: 0; color: #e9c878; font-size: 0.75rem; text-align: center; }
+.smart-scan-sampler { display: none; }
+.object-box { position: absolute; z-index: 4; box-sizing: border-box; border: 2px solid #b7cf9c; border-radius: 12px; pointer-events: none; }
+.object-box span { position: absolute; top: -22px; left: 0; padding: 3px 6px; border-radius: 5px; color: #07100b; background: #b7cf9c; font-size: 0.6rem; }
+.object-box-weak, .object-box-recovering { border-color: #e9c878; }
+.object-box-lost { border-color: #d56b6b; opacity: 0.65; }
+.scan-message { position: absolute; left: 20px; right: 20px; bottom: 190px; z-index: 5; color: #f2f5ed; font-size: 0.9rem; text-align: center; text-shadow: 0 1px 5px #000; }
+.capture-object-button { position: absolute; left: 20px; right: 20px; bottom: 116px; z-index: 6; min-height: 54px; border: 0; border-radius: 14px; color: #07100b; background: #b7cf9c; font-weight: 800; letter-spacing: 0.08em; }
+.capture-progress { position: absolute; left: 20px; right: 20px; bottom: 116px; z-index: 6; display: grid; gap: 6px; color: #f2f5ed; text-align: center; }
+.capture-progress strong { font-size: 1.2rem; }
+.scan-complete { position: absolute; inset: 20% 20px auto; z-index: 10; padding: 20px; border: 1px solid rgba(183, 207, 156, 0.45); border-radius: 18px; color: #f2f5ed; background: rgba(7, 11, 10, 0.9); text-align: center; }
+.scan-complete h2 { margin: 0 0 8px; }
+.capture-thumbnails { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 14px 0; }
+.capture-thumbnails img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 5px; }
+.scan-complete button { min-height: 42px; margin: 4px; padding: 0 12px; border: 0; border-radius: 9px; color: #07100b; background: #b7cf9c; font-weight: 700; }
+.smart-scan-dev-diagnostics { top: 96px; bottom: auto; left: 20px; right: auto; max-height: 22vh; overflow: auto; text-align: left; }
 .scan-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: auto; }
 .scan-footer p { margin: 0; color: #e4e9df; font-size: 0.8rem; }
 .finish-button { min-width: 112px; min-height: 48px; border: 1px solid #b7cf9c; border-radius: 999px; color: #101615; background: #b7cf9c; cursor: pointer; font-weight: 800; }
