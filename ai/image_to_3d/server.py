@@ -9,7 +9,7 @@ import argparse, threading, uuid
 from pathlib import Path
 from typing import Any
 
-import numpy as np
+import cv2, numpy as np
 import rembg, torch
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +29,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 JOBS_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=JOBS_ROOT), name="files")
 jobs: dict[str, dict[str, Any]] = {}
+mapping_sessions: dict[str, dict[str, Any]] = {}
 model = None
 rembg_session = None
 model_lock = threading.Lock()
@@ -37,6 +38,34 @@ model_lock = threading.Lock()
 @app.get("/health")
 def health():
     return {"ok": True, "modelLoaded": model is not None, "cuda": torch.cuda.is_available()}
+
+@app.post("/api/mapping/start")
+def start_mapping():
+    session_id = uuid.uuid4().hex
+    mapping_sessions[session_id] = {"sessionId": session_id, "status": "active", "frames": 0, "features": 0, "mapPoints": 0, "pose": {"x": 0.0, "y": 0.0, "z": 0.0}, "previous": None}
+    return {"sessionId": session_id}
+
+@app.post("/api/mapping/{session_id}/frame")
+async def mapping_frame(session_id: str, frame: UploadFile = File(...)):
+    session = mapping_sessions.get(session_id)
+    if not session or session["status"] != "active": return {"status": "failed", "message": "Mapping session is not active"}
+    image = cv2.imdecode(np.frombuffer(await frame.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
+    if image is None: return {"status": "failed", "message": "Invalid image"}
+    orb = cv2.ORB_create(nfeatures=900); keypoints, descriptors = orb.detectAndCompute(image, None); matches = []
+    if session["previous"] is not None and descriptors is not None and session["previous"][1] is not None:
+        raw = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(session["previous"][1], descriptors, k=2)
+        matches = [m for m, n in raw if m.distance < 0.75 * n.distance]
+        if len(matches) >= 8:
+            old = np.float32([session["previous"][0][m.queryIdx].pt for m in matches]); new = np.float32([keypoints[m.trainIdx].pt for m in matches]); matrix, _ = cv2.estimateAffinePartial2D(old, new, method=cv2.RANSAC)
+            if matrix is not None: session["pose"]["x"] += float(matrix[0, 2] / max(1, image.shape[1])); session["pose"]["y"] += float(matrix[1, 2] / max(1, image.shape[0])); session["pose"]["z"] += float(1.0 - matrix[0, 0])
+    session["previous"] = (keypoints, descriptors); session["frames"] += 1; session["features"] = len(keypoints); session["mapPoints"] += len(matches)
+    return {"sessionId": session_id, "status": "active", "frame": session["frames"], "features": session["features"], "matches": len(matches), "mapPoints": session["mapPoints"], "pose": session["pose"]}
+
+@app.post("/api/mapping/{session_id}/stop")
+def stop_mapping(session_id: str):
+    session = mapping_sessions.get(session_id)
+    if not session: return {"status": "failed", "message": "Unknown mapping session"}
+    session["status"] = "completed"; session.pop("previous", None); return session
 
 
 @app.post("/api/scan")
