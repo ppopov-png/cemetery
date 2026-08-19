@@ -181,6 +181,9 @@ h1 {
 .mapping-panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .mapping-panel h2 { margin: 0; font-size: 1.45rem; }
 .mapping-stats { display: grid; gap: 10px; margin: 22px 0; padding: 16px; border: 1px solid #34443d; border-radius: 14px; color: #b7cf9c; }
+.sparse-map-viewer { position: relative; height: 250px; overflow: hidden; margin: 16px 0; border: 1px solid #34443d; border-radius: 14px; }
+.sparse-map-viewer canvas { display: block; width: 100%; height: 250px; }
+.sparse-map-viewer span { position: absolute; z-index: 1; top: 10px; left: 12px; color: #8d9b93; font-size: .72rem; pointer-events: none; }
 
 @media (min-width: 640px) {
   .home-page { padding-inline: 8vw; }

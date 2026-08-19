@@ -42,7 +42,7 @@ def health():
 @app.post("/api/mapping/start")
 def start_mapping():
     session_id = uuid.uuid4().hex
-    mapping_sessions[session_id] = {"sessionId": session_id, "status": "active", "frames": 0, "features": 0, "mapPoints": 0, "pose": {"x": 0.0, "y": 0.0, "z": 0.0}, "previous": None}
+    mapping_sessions[session_id] = {"sessionId": session_id, "status": "active", "frames": 0, "features": 0, "mapPoints": 0, "pose": {"x": 0.0, "y": 0.0, "z": 0.0}, "points": [], "previous": None}
     return {"sessionId": session_id}
 
 @app.post("/api/mapping/{session_id}/frame")
@@ -58,8 +58,15 @@ async def mapping_frame(session_id: str, frame: UploadFile = File(...)):
         if len(matches) >= 8:
             old = np.float32([session["previous"][0][m.queryIdx].pt for m in matches]); new = np.float32([keypoints[m.trainIdx].pt for m in matches]); matrix, _ = cv2.estimateAffinePartial2D(old, new, method=cv2.RANSAC)
             if matrix is not None: session["pose"]["x"] += float(matrix[0, 2] / max(1, image.shape[1])); session["pose"]["y"] += float(matrix[1, 2] / max(1, image.shape[0])); session["pose"]["z"] += float(1.0 - matrix[0, 0])
+            focal = float(max(image.shape)); K = np.array([[focal, 0, image.shape[1] / 2], [0, focal, image.shape[0] / 2], [0, 0, 1]], dtype=np.float64)
+            essential, _ = cv2.findEssentialMat(old, new, K, method=cv2.RANSAC, prob=0.999, threshold=1.0)
+            if essential is not None:
+                _, rotation, translation, mask = cv2.recoverPose(essential, old, new, K)
+                p1 = K @ np.hstack((np.eye(3), np.zeros((3, 1)))); p2 = K @ np.hstack((rotation, translation)); triangulated = cv2.triangulatePoints(p1, p2, old.T, new.T); triangulated /= np.maximum(triangulated[3:4], 1e-8)
+                valid = mask.ravel().astype(bool) if mask is not None else np.ones(len(old), dtype=bool)
+                session["points"] = (session["points"] + [[float(x), float(y), float(z)] for x, y, z, ok in zip(triangulated[0], triangulated[1], triangulated[2], valid) if ok and np.isfinite(x + y + z) and abs(z) < 100])[-3000:]
     session["previous"] = (keypoints, descriptors); session["frames"] += 1; session["features"] = len(keypoints); session["mapPoints"] += len(matches)
-    return {"sessionId": session_id, "status": "active", "frame": session["frames"], "features": session["features"], "matches": len(matches), "mapPoints": session["mapPoints"], "pose": session["pose"]}
+    return {"sessionId": session_id, "status": "active", "frame": session["frames"], "features": session["features"], "matches": len(matches), "mapPoints": len(session["points"]), "points": session["points"], "pose": session["pose"]}
 
 @app.post("/api/mapping/{session_id}/stop")
 def stop_mapping(session_id: str):
