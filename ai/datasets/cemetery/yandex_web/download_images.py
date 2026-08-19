@@ -41,15 +41,18 @@ def existing_index(root: Path) -> tuple[set[str], set[str]]:
     return shas, phashes
 
 
-def _download(candidate: Candidate, root: Path, timeout: int = 45) -> dict:
+def _download(candidate: Candidate, root: Path, timeout: int = 30) -> dict:
     reason = reject_reason(candidate)
     if reason: return {"status": "rejected", "candidate": asdict(candidate), "reason": reason}
     session = requests.Session(); session.headers.update({"User-Agent": "cemetery-mapper-yandex-web-bootstrap/0.1"})
     temporary: Path | None = None
-    try:
-        response = session.get(candidate.imageUrl, timeout=timeout, stream=True); response.raise_for_status(); content_type = response.headers.get("Content-Type", "").split(";", 1)[0].casefold()
-        suffix = IMAGE_TYPES.get(content_type, Path(urlparse(candidate.imageUrl).path).suffix.casefold()[:5] or ".img")
-        temporary = root / "raw/images" / f".tmp-{hashlib.sha256(candidate.imageUrl.encode()).hexdigest()[:20]}{suffix}"
+    errors = []
+    urls = list(dict.fromkeys([candidate.imageUrl] + (candidate.alternateUrls or []) + ([candidate.previewUrl] if candidate.previewUrl else [])))
+    for image_url in urls:
+      try:
+        response = session.get(image_url, timeout=timeout, stream=True); response.raise_for_status(); content_type = response.headers.get("Content-Type", "").split(";", 1)[0].casefold()
+        suffix = IMAGE_TYPES.get(content_type, Path(urlparse(image_url).path).suffix.casefold()[:5] or ".img")
+        temporary = root / "raw/images" / f".tmp-{hashlib.sha256(image_url.encode()).hexdigest()[:20]}{suffix}"
         with temporary.open("wb") as stream:
             for chunk in response.iter_content(1024 * 1024):
                 if chunk: stream.write(chunk)
@@ -57,12 +60,13 @@ def _download(candidate: Candidate, root: Path, timeout: int = 45) -> dict:
             image.load(); width, height = image.size; phash = str(imagehash.phash(image)); detected_suffix = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif", "BMP": ".bmp", "TIFF": ".tif"}.get(image.format or "")
         if suffix == ".img" and detected_suffix: suffix = detected_suffix
         digest = sha256(temporary); image_id = digest[:24]; image_path = root / "raw/images" / f"{image_id}{suffix}"; temporary.replace(image_path)
-        metadata = {"source": "yandex_images_web", "query": candidate.query, "rank": candidate.rank, "sourcePage": candidate.sourcePage, "imageUrl": candidate.imageUrl, "previewUrl": candidate.previewUrl, "domain": candidate.domain, "title": candidate.title, "downloadedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"), "width": width, "height": height, "sha256": digest, "phash": phash, "licenseStatus": "unverified", "datasetTier": "web_bootstrap", "filename": image_path.name}
+        metadata = {"source": "yandex_images_web", "query": candidate.query, "rank": candidate.rank, "sourcePage": candidate.sourcePage, "imageUrl": image_url, "previewUrl": candidate.previewUrl, "alternateImageUrls": candidate.alternateUrls or [], "domain": candidate.domain, "title": candidate.title, "downloadedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"), "width": width, "height": height, "sha256": digest, "phash": phash, "licenseStatus": "unverified", "datasetTier": "web_bootstrap", "filename": image_path.name}
         (root / "raw/metadata" / f"{image_id}.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"status": "accepted", "candidate": asdict(candidate), "metadata": metadata}
-    except Exception as error:
+      except Exception as error:
+        errors.append(f"{image_url}: {error}")
         if temporary and temporary.exists(): temporary.unlink(missing_ok=True)
-        return {"status": "rejected", "candidate": asdict(candidate), "reason": str(error)}
+    return {"status": "rejected", "candidate": asdict(candidate), "reason": " | ".join(errors)}
 
 
 def download_candidates(candidates: list[Candidate], root: Path, workers: int, max_per_domain: int, state: dict) -> dict:

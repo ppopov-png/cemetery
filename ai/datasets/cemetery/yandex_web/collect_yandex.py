@@ -37,13 +37,15 @@ def accepted_urls(root: Path) -> set[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Collect web image candidates from Yandex Images without API keys."); parser.add_argument("--limit", type=int, default=5000); parser.add_argument("--max-per-query", type=int, default=100); parser.add_argument("--max-per-domain", type=int, default=150); parser.add_argument("--workers", type=int, default=8); parser.add_argument("--scroll-delay", type=float, default=0.8); parser.add_argument("--headed", action="store_true"); parser.add_argument("--resume", action="store_true"); args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Collect web image candidates from Yandex Images without API keys."); parser.add_argument("--limit", type=int, default=5000); parser.add_argument("--max-per-query", type=int, default=100); parser.add_argument("--max-per-domain", type=int, default=150); parser.add_argument("--workers", type=int, default=8); parser.add_argument("--scroll-delay", type=float, default=0.8); parser.add_argument("--headed", action="store_true"); parser.add_argument("--resume", action="store_true"); parser.add_argument("--browser", choices=["chrome", "chromium"], default="chrome"); args = parser.parse_args()
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(errors="replace")
     output = ROOT; state_path = output / "state/collector-state.json"; state = load_state(state_path, args.resume); all_queries = queries(); start = min(int(state.get("queryIndex", 0)), len(all_queries))
     browser = None
     try:
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=not args.headed); page = browser.new_page(viewport={"width": 1280, "height": 900}, locale="ru-RU")
+            launch_options = {"headless": not args.headed};
+            if args.browser == "chrome": launch_options["channel"] = "chrome"
+            browser = playwright.chromium.launch(**launch_options); page = browser.new_page(viewport={"width": 1280, "height": 900}, locale="ru-RU")
             for index in range(start, len(all_queries)):
                 if state.get("accepted", 0) >= args.limit: break
                 query = all_queries[index]; state["queryIndex"] = index; state["lastQuery"] = query; save_state(state_path, state); print_progress(query, state)

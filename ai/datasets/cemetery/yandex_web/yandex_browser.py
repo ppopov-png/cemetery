@@ -31,6 +31,7 @@ class Candidate:
     query: str
     rank: int
     cardIndex: int | None = None
+    alternateUrls: list[str] | None = None
 
 
 def _is_blocked(page: Page) -> bool:
@@ -44,7 +45,7 @@ def _urls(value: object) -> list[str]:
     found: list[str] = []
     if isinstance(value, str):
         text = value.replace("\\/", "/")
-        found.extend(re.findall(r"(?:https?:)?//[^\"'\\\s]+", text))
+        found.extend("https:" + url if url.startswith("//") else url for url in re.findall(r"(?:https?:)?//[^\"'\\\s]+", text))
     elif isinstance(value, dict):
         for item in value.values(): found.extend(_urls(item))
     elif isinstance(value, list):
@@ -88,12 +89,15 @@ def _extract_cards(page: Page, query: str, start_rank: int) -> list[Candidate]:
         if not original or original in seen: continue
         seen.add(original); href = row.get("href"); domain = urlparse(href or original).netloc or None
         title = image_data.get("alt") or row.get("text") or None
-        candidates.append(Candidate(original, preview, href, re.sub(r"\s+", " ", title).strip() if title else None, domain, query, start_rank + len(candidates) + 1, row.get("cardIndex")))
+        candidates.append(Candidate(original, preview, href, re.sub(r"\s+", " ", title).strip() if title else None, domain, query, start_rank + len(candidates) + 1, row.get("cardIndex"), image_values))
     return candidates
 
 
 def resolve_original_urls(page: Page, candidates: list[Candidate]) -> None:
     """Open cards one at a time and capture the image request made by Yandex."""
+    refreshed = _extract_cards(page, candidates[0].query if candidates else "", 0)
+    for candidate, current in zip(candidates, refreshed):
+        candidate.cardIndex = current.cardIndex
     for candidate in candidates:
         if candidate.cardIndex is None:
             continue
@@ -111,13 +115,17 @@ def resolve_original_urls(page: Page, candidates: list[Candidate]) -> None:
 
         page.on("response", on_response)
         try:
+            print(f"Prepare card click: rank={candidate.rank}, cardIndex={candidate.cardIndex}", flush=True)
             card = page.locator(f'[data-cemetery-bootstrap-card="{candidate.cardIndex}"]').first
-            if not card.count(): continue
+            if not card.count():
+                print(f"Card unavailable after DOM refresh: rank={candidate.rank}", flush=True)
+                continue
             print(f"Click card: rank={candidate.rank}", flush=True)
             card.scroll_into_view_if_needed(timeout=5000); card.click(timeout=5000); page.wait_for_timeout(1200)
             if _is_blocked(page): raise YandexBlockedOrCaptcha("YANDEX_BLOCKED_OR_CAPTCHA")
             if responses:
                 _, url = max(responses, key=lambda item: item[0])
+                candidate.alternateUrls = list(dict.fromkeys([url] + (candidate.alternateUrls or [])))
                 if url != candidate.imageUrl:
                     candidate.previewUrl = candidate.imageUrl; candidate.imageUrl = url; candidate.domain = urlparse(url).netloc or candidate.domain
             page.keyboard.press("Escape")
@@ -125,7 +133,7 @@ def resolve_original_urls(page: Page, candidates: list[Candidate]) -> None:
         except PlaywrightTimeoutError:
             page.keyboard.press("Escape")
         finally:
-            page.off("response", on_response)
+            page.remove_listener("response", on_response)
 
 
 def collect_query(page: Page, query: str, max_results: int, scroll_delay: float) -> list[Candidate]:
