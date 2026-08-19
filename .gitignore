@@ -39,6 +39,7 @@ ai/datasets/cemetery/prepared/
 ai/.venv-*/
 ai/third_party/
 ai/3d-output/
+ai/3d-output*/
 ai/triposr-output/
 ai/test-input.jpg
 __pycache__/
