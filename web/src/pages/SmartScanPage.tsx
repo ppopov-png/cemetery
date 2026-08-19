@@ -91,7 +91,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
       {scanState === 'CAPTURING' && <div className="capture-progress"><strong>{session?.frames.length ?? 0} / {targetFrameCount}</strong><span>Медленно перемещайте телефон вокруг объекта</span><span>{'● '.repeat(session?.frames.length ?? 0)}{'○ '.repeat(targetFrameCount - (session?.frames.length ?? 0))}</span></div>}
       {scanState === 'SCAN_COMPLETE' && <ScanComplete session={session} onRepeat={repeat} onDone={onExit} onSend={() => setRemoteOpen(true)} />}<SpatialDiagnosticsPanel capabilities={capabilities} diagnostics={spatialDiagnostics} tracking={tracking} quality={quality} session={session} modelStatus={modelStatus} detectorDiagnostics={detectorDiagnostics} />
       {remoteOpen && session && <RemoteScanPanel frames={session.frames.map((frame) => frame.image)} onClose={() => setRemoteOpen(false)} />}
-      {mappingOpen && <MappingPanel video={videoRef.current} onClose={() => setMappingOpen(false)} />}
+      {mappingOpen && <MappingPanel videoRef={videoRef} onClose={() => setMappingOpen(false)} />}
       <footer className="scan-footer"><p>{scanState === 'OBJECT_LOST' ? 'Верните памятник в кадр' : 'Камера автоматически ищет объект'}</p><button className="finish-button" type="button" onClick={finish}>Finish</button></footer>
     </div></main>
 }
