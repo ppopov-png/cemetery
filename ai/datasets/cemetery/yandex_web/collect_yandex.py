@@ -37,7 +37,7 @@ def accepted_urls(root: Path) -> set[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Collect web image candidates from Yandex Images without API keys."); parser.add_argument("--limit", type=int, default=5000); parser.add_argument("--max-per-query", type=int, default=100); parser.add_argument("--max-per-domain", type=int, default=150); parser.add_argument("--workers", type=int, default=8); parser.add_argument("--scroll-delay", type=float, default=0.8); parser.add_argument("--headed", action="store_true"); parser.add_argument("--resume", action="store_true"); parser.add_argument("--browser", choices=["chrome", "chromium"], default="chrome"); args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Collect web image candidates from Yandex Images without API keys."); parser.add_argument("--limit", type=int, default=5000); parser.add_argument("--max-per-query", type=int, default=100); parser.add_argument("--max-per-domain", type=int, default=150); parser.add_argument("--workers", type=int, default=8); parser.add_argument("--scroll-delay", type=float, default=0.8); parser.add_argument("--headed", action="store_true"); parser.add_argument("--resume", action="store_true"); parser.add_argument("--browser", choices=["chrome", "chromium"], default="chromium"); args = parser.parse_args()
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(errors="replace")
     output = ROOT; state_path = output / "state/collector-state.json"; state = load_state(state_path, args.resume); all_queries = queries(); start = min(int(state.get("queryIndex", 0)), len(all_queries))
     browser = None

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote, urlparse
 import json
 import re
 import time
@@ -137,7 +137,7 @@ def resolve_original_urls(page: Page, candidates: list[Candidate]) -> None:
 
 
 def collect_query(page: Page, query: str, max_results: int, scroll_delay: float) -> list[Candidate]:
-    url = "https://yandex.ru/images/search?text=" + quote_plus(query)
+    url = "https://yandex.ru/images/search?text=" + quote(query, safe="")
     last_error = None
     for attempt in range(1, 4):
         try:

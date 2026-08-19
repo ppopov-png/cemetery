@@ -15,7 +15,7 @@ python collect_yandex.py --limit 5000
 python collect_yandex.py --limit 5000 --resume
 ```
 
-The default browser mode is headless and uses the installed Google Chrome channel (`--browser chrome`). Use `--browser chromium` to use the Playwright-downloaded Chromium. `--headed` is only for diagnosing page access or DOM changes. Supported controls are `--max-per-query 100`, `--max-per-domain 150`, `--workers 8`, `--scroll-delay 0.8`, `--headed`, and `--resume`.
+The default browser mode is headless and uses Playwright-downloaded Chromium (`--browser chromium`). Use `--browser chrome` only to explicitly use installed Google Chrome. `--headed` is only for diagnosing page access or DOM changes. Supported controls are `--max-per-query 100`, `--max-per-domain 150`, `--workers 8`, `--scroll-delay 0.8`, `--headed`, and `--resume`.
 
 If Yandex presents CAPTCHA, an access block, or a rate-limit page, the collector writes state and exits with `YANDEX_BLOCKED_OR_CAPTCHA`. It never attempts to solve or bypass the restriction. A closed/failed connection exits with `YANDEX_NETWORK_ERROR` after a small bounded retry. A changed page structure exits with `YANDEX_DOM_CHANGED` instead of silently downloading unknown content.
 
