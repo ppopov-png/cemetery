@@ -41,4 +41,30 @@ Build command:
 Build output directory:
 `dist`
 
+## Deployment
+
+### GitHub Pages
+
+Production URL:
+
+`https://ppopov-png.github.io/cemetery/`
+
+Deployment выполняется автоматически после push в ветку `master` через `.github/workflows/deploy-pages.yml`. Workflow также можно запустить вручную через `workflow_dispatch`.
+
+GitHub Pages build использует:
+
+`VITE_BASE_PATH=/cemetery/`
+
+### Cloudflare Pages
+
+Cloudflare Pages остаётся без изменений:
+
+Root directory: `web`
+
+Build command: `npm run build`
+
+Build output directory: `dist`
+
+Локальная сборка и Cloudflare используют base `/`, а GitHub Pages — `/cemetery/`. Поэтому один frontend совместим с обоими deployment targets.
+
 Дополнительные переменные окружения для текущего этапа не нужны.

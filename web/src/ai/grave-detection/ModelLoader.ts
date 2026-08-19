@@ -27,11 +27,12 @@ export class ModelLoader {
   async getRuntime() { return this.runtime ??= await import('onnxruntime-web') }
 
   private async loadInternal() {
-    const manifestResponse = await fetch(graveDetectorConfig.manifestUrl, { cache: 'force-cache' })
+    const manifestUrl = assetUrl(graveDetectorConfig.manifestPath)
+    const manifestResponse = await fetch(manifestUrl, { cache: 'force-cache' })
     if (manifestResponse.status === 404) throw new ModelMissingError('Grave detector manifest is missing.')
     if (!manifestResponse.ok) throw new Error(`Could not load detector manifest (${manifestResponse.status}).`)
     this.manifest = await manifestResponse.json() as GraveDetectorManifest
-    const modelUrl = new URL(graveDetectorConfig.modelUrl, window.location.origin).toString()
+    const modelUrl = assetUrl(graveDetectorConfig.modelPath)
     const modelResponse = await fetch(modelUrl, { method: 'HEAD', cache: 'force-cache' })
     if (modelResponse.status === 404) throw new ModelMissingError('Grave detector ONNX model is missing.')
     if (!modelResponse.ok) throw new Error(`Could not access detector model (${modelResponse.status}).`)
@@ -55,3 +56,4 @@ async function isUsableWebGPU() {
   try { return Boolean(await gpu.requestAdapter()) } catch { return false }
 }
 function getErrorMessage(error: unknown) { return error instanceof Error ? error.message : 'Detector model could not be loaded.' }
+function assetUrl(path: string) { return new URL(path, new URL(import.meta.env.BASE_URL, window.location.origin)).toString() }
