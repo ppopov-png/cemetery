@@ -2,7 +2,7 @@ export type RemoteScanObject = { id: string; imageIndex: number; imageUrl: strin
 export type RemoteScanJob = { jobId: string; status: 'queued' | 'processing' | 'completed' | 'failed'; progress: number; message?: string; objects?: RemoteScanObject[] }
 // Current LAN address of the Windows PC running TripoSR. This is only a default;
 // the saved value or VITE_SCAN_API_URL still takes precedence.
-const DEFAULT_PC_API_URL = 'http://192.168.10.152:8080'
+const DEFAULT_PC_API_URL = 'https://home-pc.tailaf644b.ts.net'
 export function getRemoteScanApiUrl() { return localStorage.getItem('cemetery.scanApiUrl') || import.meta.env.VITE_SCAN_API_URL || DEFAULT_PC_API_URL }
 export async function submitRemoteScan(blobs: Blob[], apiUrl: string) { const form = new FormData(); blobs.forEach((blob, i) => form.append('images', blob, `frame-${i + 1}.jpg`)); const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api/scan`, { method: 'POST', body: form }); if (!response.ok) throw new Error(`PC API returned HTTP ${response.status}`); return response.json() as Promise<{ jobId: string }> }
 export async function getRemoteScanJob(jobId: string, apiUrl: string) { const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api/scan/${jobId}`); if (!response.ok) throw new Error(`PC API returned HTTP ${response.status}`); const job = await response.json() as RemoteScanJob; return { ...job, objects: job.objects?.map((object) => ({ ...object, imageUrl: absoluteUrl(apiUrl, object.imageUrl), maskUrl: absoluteUrl(apiUrl, object.maskUrl), modelUrl: absoluteUrl(apiUrl, object.modelUrl) })) } }
