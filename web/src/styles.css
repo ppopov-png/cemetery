@@ -159,6 +159,24 @@ h1 {
 .finish-button { min-width: 112px; min-height: 48px; border: 1px solid #b7cf9c; border-radius: 999px; color: #101615; background: #b7cf9c; cursor: pointer; font-weight: 800; }
 .finish-button:focus-visible { outline: 3px solid #f2f5ed; outline-offset: 4px; }
 
+.remote-scan-panel { position: fixed; inset: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)); z-index: 20; overflow: auto; padding: 20px; border: 1px solid #61756a; border-radius: 22px; color: #f2f5ed; background: rgba(10, 17, 14, 0.97); box-shadow: 0 20px 70px #000; }
+.remote-scan-panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.remote-scan-panel h2 { margin: 0; font-size: 1.55rem; }
+.remote-close { padding: 8px 12px; border: 1px solid #61756a; border-radius: 999px; color: #e4e9df; background: transparent; }
+.remote-note { color: #a6b1aa; line-height: 1.45; }
+.remote-label { display: grid; gap: 8px; margin: 20px 0; color: #b7cf9c; font-size: .78rem; font-weight: 700; }
+.remote-label input { min-height: 48px; padding: 0 14px; border: 1px solid #61756a; border-radius: 12px; color: #f2f5ed; background: #151e1b; }
+.remote-action { width: 100%; min-height: 54px; border: 0; border-radius: 14px; color: #07100b; background: #b7cf9c; font-weight: 800; }
+.remote-tabs, .remote-frame-picker { display: flex; gap: 8px; margin: 16px 0; }
+.remote-tabs button, .remote-frame-picker button { min-height: 40px; padding: 0 12px; border: 1px solid #61756a; border-radius: 999px; color: #e4e9df; background: #151e1b; }
+.remote-tabs button.active, .remote-frame-picker button.active { color: #07100b; background: #b7cf9c; }
+.remote-result { overflow: hidden; min-height: 260px; border-radius: 16px; background: #050807; }
+.mask-preview { position: relative; display: grid; place-items: center; min-height: 260px; }
+.mask-preview > img { display: block; width: 100%; max-height: 52vh; object-fit: contain; }
+.mask-preview .mask-layer { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .48; mix-blend-mode: screen; }
+.remote-result model-viewer { display: block; width: 100%; height: 52vh; background: radial-gradient(circle, #30443b, #050807); }
+.remote-error { padding: 12px; border: 1px solid #70473d; border-radius: 12px; color: #f0c0a9; font-size: .85rem; }
+
 @media (min-width: 640px) {
   .home-page { padding-inline: 8vw; }
   .intro { font-size: 1.1rem; }

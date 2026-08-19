@@ -1,19 +1,17 @@
-# Image to 3D
+# Phone → PC reconstruction bridge
 
-The local setup uses TripoSR and the NVIDIA RTX 3060 GPU. It takes one image and produces an approximate GLB mesh. Hidden sides and true metric dimensions are inferred, not measured.
+The PC server accepts up to six JPEG frames, creates an approximate foreground
+mask with `rembg`, generates one approximate GLB per frame with TripoSR, and
+returns URLs for the phone UI.
 
-Run from the repository root:
-
-```powershell
-python ai/image_to_3d/generate.py --input path\to\monument.jpg
-```
-
-The result is written to `ai/3d-output/0/mesh.glb`.
-
-To keep the background instead of removing it:
+Install server dependencies into the existing TripoSR environment:
 
 ```powershell
-python ai/image_to_3d/generate.py --input path\to\monument.jpg --no-remove-bg
+& .\ai\.venv-triposr\Scripts\python.exe -m pip install -r .\ai\image_to_3d\requirements-server.txt
+& .\ai\.venv-triposr\Scripts\python.exe .\ai\image_to_3d\server.py
 ```
 
-The first run downloads approximately 1.7 GB of TripoSR weights. The model environment is separate in `ai/.venv-triposr/`.
+The server listens on `http://0.0.0.0:8080`. Open `http://<PC-LAN-IP>:8080/health`
+from the phone to verify it. For the deployed HTTPS PWA, expose this port through
+an HTTPS tunnel (Cloudflare Tunnel or a VPN HTTPS gateway); browsers block an
+HTTPS page from calling a plain HTTP LAN endpoint.
