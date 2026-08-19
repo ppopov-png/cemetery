@@ -23,6 +23,6 @@ If Yandex presents CAPTCHA, an access block, or a rate-limit page, the collector
 
 Downloaded files are stored under this directory in `raw/images/`, with metadata in `raw/metadata/`. `cleaned/images/`, `cleaned/metadata/`, `rejected/`, `reports/`, and `state/` are prepared for later stages. All accepted web candidates have `licenseStatus: unverified` and `datasetTier: web_bootstrap`; no license is inferred from a search result.
 
-No Pillow, dimensions, aspect-ratio, format, or semantic filtering is performed at this raw collection stage. Every response that downloads successfully is kept, including small previews and WebP, JPEG, PNG, GIF, BMP, and TIFF files. Maps, schemes, monuments, graves, and ambiguous web candidates are all left for later human/vision review. It creates no bounding boxes, OCR, or training artifacts. Exact SHA-256 duplicates are not stored again.
+No Pillow, dimensions, aspect-ratio, format, semantic filtering, domain cap, or deduplication is performed at this raw collection stage. Every response that downloads successfully is kept as a separate file for its Yandex card, including repeated URLs or identical bytes. `Results discovered: 100` therefore means up to 100 download attempts and, when the URLs are reachable, 100 files. Only failed HTTP/download attempts are reported as rejected.
 
 State is saved after each query and after each download batch. Ctrl+C saves `state/collector-state.json`. Resume skips URLs already seen and continues from the last query.
