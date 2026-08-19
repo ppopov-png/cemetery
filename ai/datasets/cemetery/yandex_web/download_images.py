@@ -29,16 +29,6 @@ def reject_reason(candidate: Candidate) -> str | None:
     return None
 
 
-def existing_index(root: Path) -> tuple[set[str], set[str]]:
-    shas: set[str] = set(); phashes: set[str] = set()
-    for metadata_path in (root / "raw/metadata").glob("*.json"):
-        try: item = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError: continue
-        if item.get("sha256"): shas.add(item["sha256"])
-        if item.get("phash"): phashes.add(item["phash"])
-    return shas, phashes
-
-
 def _download(candidate: Candidate, root: Path, timeout: int = 30) -> dict:
     reason = reject_reason(candidate)
     if reason: return {"status": "rejected", "candidate": asdict(candidate), "reason": reason}
