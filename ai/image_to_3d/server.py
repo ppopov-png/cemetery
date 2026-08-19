@@ -52,7 +52,7 @@ async def create_scan(images: list[UploadFile] = File(...)):
         path = input_dir / f"{index}.jpg"
         path.write_bytes(await upload.read())
         paths.append(path)
-    jobs[job_id] = {"jobId": job_id, "status": "queued", "progress": 0, "objects": []}
+    jobs[job_id] = {"jobId": job_id, "status": "queued", "progress": 0, "objects": [], "framesReceived": len(paths)}
     threading.Thread(target=process_job, args=(job_id, paths), daemon=True).start()
     return {"jobId": job_id}
 
@@ -79,6 +79,9 @@ def process_job(job_id: str, paths: list[Path]):
         with model_lock:
             load_model()
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
+            # Fast path: return one usable reconstruction quickly. The remaining
+            # views are retained on disk for the future multi-view fusion stage.
+            paths = paths[:1]
             for index, path in enumerate(paths):
                 output = root / str(index)
                 output.mkdir(parents=True, exist_ok=True)
@@ -94,7 +97,7 @@ def process_job(job_id: str, paths: list[Path]):
                 prepared.save(output / "input.png")
                 with torch.no_grad():
                     codes = model([prepared], device=device)
-                mesh = model.extract_mesh(codes, True, resolution=128)[0]
+                mesh = model.extract_mesh(codes, True, resolution=64)[0]
                 mesh.export(output / "mesh.glb")
                 jobs[job_id]["objects"].append({
                     "id": f"object-{index}", "imageIndex": index,
@@ -114,5 +117,6 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
+    load_model()
     import uvicorn
     uvicorn.run(app, host=args.host, port=args.port)
