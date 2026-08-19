@@ -91,7 +91,7 @@ def _extract_cards(page: Page, query: str, start_rank: int) -> list[Candidate]:
 def resolve_original_urls(page: Page, candidates: list[Candidate]) -> None:
     """Open cards one at a time and capture the image request made by Yandex."""
     for candidate in candidates:
-        if candidate.cardIndex is None or "yandex" not in candidate.imageUrl.casefold():
+        if candidate.cardIndex is None:
             continue
         responses: list[tuple[int, str]] = []
 
@@ -109,7 +109,8 @@ def resolve_original_urls(page: Page, candidates: list[Candidate]) -> None:
         try:
             card = page.locator(f'[data-cemetery-bootstrap-card="{candidate.cardIndex}"]').first
             if not card.count(): continue
-            card.scroll_into_view_if_needed(timeout=5000); card.click(timeout=5000); page.wait_for_timeout(800)
+            print(f"Click card: rank={candidate.rank}", flush=True)
+            card.scroll_into_view_if_needed(timeout=5000); card.click(timeout=5000); page.wait_for_timeout(1200)
             if _is_blocked(page): raise YandexBlockedOrCaptcha("YANDEX_BLOCKED_OR_CAPTCHA")
             if responses:
                 _, url = max(responses, key=lambda item: item[0])
