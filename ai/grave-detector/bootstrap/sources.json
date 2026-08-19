@@ -1,0 +1,14 @@
+{
+  "approved": [
+    {
+      "id": "lei-kl6g1/graves",
+      "workspace": "lei-kl6g1",
+      "project": "graves",
+      "license": "CC BY 4.0",
+      "url": "https://universe.roboflow.com/lei-kl6g1/graves",
+      "priority": "seed",
+      "reason": "Verified public object-detection seed with grave class"
+    }
+  ],
+  "rejected": []
+}

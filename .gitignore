@@ -6,6 +6,8 @@ Thumbs.db
 *.tsbuildinfo
 ai/grave-detector/dataset/images/
 ai/grave-detector/dataset/labels/
+ai/grave-detector/bootstrap/cache/
+ai/grave-detector/dataset-bootstrap/
 web/public/models/grave-detector/*.onnx
 ai/datasets/cemetery/raw/images/*
 !ai/datasets/cemetery/raw/images/.gitkeep
