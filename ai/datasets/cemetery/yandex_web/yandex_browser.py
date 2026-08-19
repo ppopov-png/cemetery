@@ -45,6 +45,12 @@ def _urls(value: object) -> list[str]:
     return found
 
 
+def _looks_like_image_url(url: str) -> bool:
+    lowered = url.casefold()
+    if "yastatic.net/lego" in lowered or lowered.startswith("data:"): return False
+    return any(token in lowered for token in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", "get-images", "image", "avatar"))
+
+
 def _extract_cards(page: Page, query: str, start_rank: int) -> list[Candidate]:
     raw = page.locator("body").evaluate("""body => {
       const rows = [];
@@ -66,8 +72,10 @@ def _extract_cards(page: Page, query: str, start_rank: int) -> list[Candidate]:
                 try: values.extend(_urls(json.loads(value)))
                 except (TypeError, json.JSONDecodeError): values.extend(_urls(value))
         image_data = row.get("img") or {}; values.extend(_urls(image_data.get("attrs", {}))); values.extend(_urls(image_data.get("src")))
-        original = next((url for url in values if "yandex" not in url and not url.startswith("data:")), None)
-        preview = next((url for url in values if url != original), None)
+        image_values = list(dict.fromkeys(url for url in values if _looks_like_image_url(url)))
+        original = next((url for url in image_values if "yandex" not in url.casefold()), None)
+        preview = next((url for url in image_values if url != original), None)
+        original = original or preview
         if not original or original in seen: continue
         seen.add(original); href = row.get("href"); domain = urlparse(href or original).netloc or None
         title = image_data.get("alt") or row.get("text") or None
