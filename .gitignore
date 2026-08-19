@@ -35,5 +35,6 @@ ai/datasets/cemetery/yandex_web/rejected/*
 ai/datasets/cemetery/yandex_web/reports/*
 ai/datasets/cemetery/yandex_web/state/*
 ai/datasets/cemetery/.venv/
+ai/datasets/cemetery/prepared/
 __pycache__/
 *.pyc
