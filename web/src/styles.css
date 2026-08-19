@@ -190,3 +190,10 @@ h1 {
   .intro { font-size: 1.1rem; }
   .device-check-button { max-width: 400px; }
 }
+.single-view-3d-panel { max-height: 92vh; overflow: auto; }
+.single-view-status { margin: 12px 0; color: #c1d9a0; font-weight: 700; }
+.single-view-3d-canvas { display: block; width: 100%; height: min(58vh, 520px); min-height: 280px; border-radius: 18px; background: #101615; }
+.single-view-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.single-view-controls button { border: 1px solid #b7d38e; border-radius: 999px; background: transparent; color: #eaf5dc; padding: 10px 14px; }
+.single-view-controls button[aria-pressed="true"] { background: #b7d38e; color: #101615; }
+.single-view-controls span { color: #9baaa0; font-size: .8rem; }

@@ -17,6 +17,7 @@ import type { DetectionResult, DetectorDiagnostics, ModelStatus } from '../ai/gr
 import { RemoteScanPanel } from '../components/RemoteScanPanel'
 import { MappingPanel } from '../components/MappingPanel'
 import { QuickObjectScanPanel } from '../components/QuickObjectScanPanel'
+import { SingleView3DPanel } from '../components/SingleView3DPanel'
 
 type ScanState = 'SEARCHING' | 'OBJECT_LOCK_REQUESTED' | 'LOCKING' | 'LOCKED' | 'CAPTURING' | 'OBJECT_LOST' | 'SCAN_COMPLETE' | 'FAILED'
 type SmartScanPageProps = { prepared: PreparedSmartScan; onExit: () => void }
@@ -31,7 +32,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
   const [position, setPosition] = useState<Vector3 | null>(null); const [pose, setPose] = useState<SpatialPose | null>(prepared.spatialProvider.getPose())
   const [spatialDiagnostics, setSpatialDiagnostics] = useState<SpatialDiagnostics | null>(prepared.spatialDiagnostics); const [scanState, setScanState] = useState<ScanState>('SEARCHING')
   const [tracking, setTracking] = useState<ObjectTrackingResult | null>(null); const [box, setBox] = useState<BoundingBox | null>(null); const [quality, setQuality] = useState<FrameQualityResult | null>(null); const [session, setSession] = useState<ScanSession | null>(null); const [message, setMessage] = useState('Наведите камеру на объект')
-  const [modelStatus, setModelStatus] = useState<ModelStatus>('NOT_LOADED'); const [detectorDiagnostics, setDetectorDiagnostics] = useState<DetectorDiagnostics>(detectorRef.current.getDiagnostics()); const [lastDetection, setLastDetection] = useState<DetectionResult | null>(null); const [remoteCaptureActive, setRemoteCaptureActive] = useState(false); const [mappingOpen, setMappingOpen] = useState(false); const [quickScanOpen, setQuickScanOpen] = useState(false)
+  const [modelStatus, setModelStatus] = useState<ModelStatus>('NOT_LOADED'); const [detectorDiagnostics, setDetectorDiagnostics] = useState<DetectorDiagnostics>(detectorRef.current.getDiagnostics()); const [lastDetection, setLastDetection] = useState<DetectionResult | null>(null); const [remoteCaptureActive, setRemoteCaptureActive] = useState(false); const [mappingOpen, setMappingOpen] = useState(false); const [quickScanOpen, setQuickScanOpen] = useState(false); const [singleViewOpen, setSingleViewOpen] = useState(false)
   const [remoteOpen, setRemoteOpen] = useState(false)
 
   useEffect(() => {
@@ -40,7 +41,7 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
     const unsubscribeOrientation = subscribeToOrientation(setOrientation)
     const unsubscribePose = prepared.spatialProvider.subscribePose((nextPose) => { setPose(nextPose); setPosition(nextPose?.position ?? null) })
     const unsubscribeDiagnostics = prepared.spatialProvider.subscribeDiagnostics((diagnostics) => updateSpatialDiagnostics(diagnostics, setSpatialDiagnostics, setCapabilities))
-    void detectorRef.current.load().then(() => { setModelStatus('READY'); setMessage('Ищу захоронение...'); scheduleDetection(detectionTimerRef, detectFrame) }).catch(() => { setModelStatus(detectorRef.current.getStatus()); setMessage('Модуль распознавания захоронений пока недоступен'); setDetectorDiagnostics(detectorRef.current.getDiagnostics()) })
+    setMessage('Камера готова. Нажмите APPROXIMATE 3D для построения модели по одному кадру.')
     return () => { unsubscribeOrientation(); unsubscribePose(); unsubscribeDiagnostics(); stopSampling(timerRef); stopSampling(detectionTimerRef); captureActiveRef.current = false; void detectorRef.current.unload(); trackerRef.current.reset(); diversityRef.current.reset(); if (video) video.srcObject = null; void prepared.spatialProvider.stop(); if (prepared.cameraStream && prepared.spatialProvider.mode === 'sensor-limited') stopCameraStream(prepared.cameraStream) }
   }, [prepared])
 
@@ -88,12 +89,13 @@ export function SmartScanPage({ prepared, onExit }: SmartScanPageProps) {
       <section className="scan-diagnostics" aria-label="Smart Scan status"><span>State: {scanState}</span><span>Object: {tracking?.state ?? 'INITIALIZING'}</span><span>Features: {tracking?.featureCount ?? 0}</span><span>Confidence: {tracking ? `${Math.round(tracking.confidence * 100)}%` : '—'}</span><span>Spatial: {spatialDiagnostics?.scaleStatus ?? 'UNSCALED'}</span></section>
       <div className="scan-reticle" aria-hidden="true">+</div>{box && scanState !== 'SEARCHING' && scanState !== 'SCAN_COMPLETE' && <div className={`object-box object-box-${tracking?.state.toLowerCase() ?? 'initializing'}`} style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.width * 100}%`, height: `${box.height * 100}%` }}><span>Selected object</span></div>}
       {metricTracking && <PositionHud position={position} distance={distanceFromOrigin(pose)} />}{spatialDiagnostics?.mode === 'vision' && <VisionTrajectoryHud position={spatialDiagnostics.relativePosition} />}<div className="scan-message">{message}</div>
-      {!remoteCaptureActive && scanState !== 'SCAN_COMPLETE' && <button className="capture-object-button" type="button" onClick={() => setQuickScanOpen(true)}>SCAN OBJECT</button>}
+      {!remoteCaptureActive && scanState !== 'SCAN_COMPLETE' && <button className="capture-object-button" type="button" onClick={() => setSingleViewOpen(true)}>APPROXIMATE 3D</button>}
       {scanState === 'CAPTURING' && <div className="capture-progress"><strong>{session?.frames.length ?? 0} / {targetFrameCount}</strong><span>Медленно перемещайте телефон вокруг объекта</span><span>{'● '.repeat(session?.frames.length ?? 0)}{'○ '.repeat(targetFrameCount - (session?.frames.length ?? 0))}</span></div>}
       {scanState === 'SCAN_COMPLETE' && <ScanComplete session={session} onRepeat={repeat} onDone={onExit} onSend={() => setRemoteOpen(true)} />}<SpatialDiagnosticsPanel capabilities={capabilities} diagnostics={spatialDiagnostics} tracking={tracking} quality={quality} session={session} modelStatus={modelStatus} detectorDiagnostics={detectorDiagnostics} />
       {remoteOpen && session && <RemoteScanPanel frames={session.frames.map((frame) => frame.image)} onClose={() => setRemoteOpen(false)} />}
       {mappingOpen && <MappingPanel videoRef={videoRef} onClose={() => setMappingOpen(false)} />}
       {quickScanOpen && <QuickObjectScanPanel videoRef={videoRef} onClose={() => setQuickScanOpen(false)} />}
+      {singleViewOpen && <SingleView3DPanel videoRef={videoRef} onClose={() => setSingleViewOpen(false)} />}
       <footer className="scan-footer"><p>{scanState === 'OBJECT_LOST' ? 'Верните памятник в кадр' : 'Камера автоматически ищет объект'}</p><button className="finish-button" type="button" onClick={finish}>Finish</button></footer>
     </div></main>
 }

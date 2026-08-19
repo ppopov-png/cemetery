@@ -35,7 +35,14 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globIgnores: ['**/ort-wasm-*.wasm', '**/ort.bundle*.js']
+        globIgnores: ['**/ort-wasm-*.wasm', '**/ort.bundle*.js'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/models\/depth\/.*\.onnx$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'cemetery-depth-model', expiration: { maxEntries: 1 } }
+          }
+        ]
       }
     })
   ]

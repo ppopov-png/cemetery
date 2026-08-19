@@ -1,0 +1,9 @@
+{
+  "name": "Depth Anything V2 Small",
+  "version": "v2-small-fp16",
+  "task": "monocular-relative-depth",
+  "inputSize": 518,
+  "file": "depth-anything-v2-small.onnx",
+  "license": "Apache-2.0",
+  "scale": "relative"
+}
