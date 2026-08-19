@@ -6,8 +6,6 @@ Thumbs.db
 *.tsbuildinfo
 ai/grave-detector/dataset/images/
 ai/grave-detector/dataset/labels/
-ai/grave-detector/bootstrap/cache/
-ai/grave-detector/dataset-bootstrap/
 web/public/models/grave-detector/*.onnx
 ai/datasets/cemetery/raw/images/*
 !ai/datasets/cemetery/raw/images/.gitkeep
@@ -29,6 +27,13 @@ ai/datasets/cemetery/ocr_staging/*
 !ai/datasets/cemetery/ocr_staging/.gitkeep
 !ai/datasets/cemetery/ocr_staging/**/
 !ai/datasets/cemetery/ocr_staging/**/.gitkeep
+ai/datasets/cemetery/yandex_web/raw/images/*
+ai/datasets/cemetery/yandex_web/raw/metadata/*
+ai/datasets/cemetery/yandex_web/cleaned/images/*
+ai/datasets/cemetery/yandex_web/cleaned/metadata/*
+ai/datasets/cemetery/yandex_web/rejected/*
+ai/datasets/cemetery/yandex_web/reports/*
+ai/datasets/cemetery/yandex_web/state/*
 ai/datasets/cemetery/.venv/
 __pycache__/
 *.pyc
