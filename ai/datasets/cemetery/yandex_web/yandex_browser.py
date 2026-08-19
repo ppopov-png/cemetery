@@ -6,7 +6,7 @@ import json
 import re
 import time
 
-from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Error as PlaywrightError, Page, TimeoutError as PlaywrightTimeoutError
 
 
 class YandexBlockedOrCaptcha(RuntimeError):
@@ -14,6 +14,10 @@ class YandexBlockedOrCaptcha(RuntimeError):
 
 
 class YandexDomChanged(RuntimeError):
+    pass
+
+
+class YandexNetworkError(RuntimeError):
     pass
 
 
@@ -126,8 +130,18 @@ def resolve_original_urls(page: Page, candidates: list[Candidate]) -> None:
 
 def collect_query(page: Page, query: str, max_results: int, scroll_delay: float) -> list[Candidate]:
     url = "https://yandex.ru/images/search?text=" + quote_plus(query)
-    try: page.goto(url, wait_until="domcontentloaded", timeout=45000); page.wait_for_timeout(1500)
-    except PlaywrightTimeoutError as error: raise YandexDomChanged(f"Yandex page load timeout for query: {query}") from error
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=45000); page.wait_for_timeout(1500); break
+        except PlaywrightTimeoutError as error:
+            raise YandexNetworkError(f"Yandex page load timeout for query: {query}") from error
+        except PlaywrightError as error:
+            last_error = error
+            if "ERR_CONNECTION" not in str(error): raise YandexNetworkError(f"Yandex navigation error for query: {query}: {error}") from error
+            if attempt < 3: time.sleep(2 * attempt)
+    else:
+        raise YandexNetworkError(f"Yandex connection closed for query: {query}: {last_error}") from last_error
     if _is_blocked(page): raise YandexBlockedOrCaptcha("YANDEX_BLOCKED_OR_CAPTCHA")
     results: list[Candidate] = []; seen: set[str] = set(); previous_height = 0; stagnant = 0
     for _ in range(80):
