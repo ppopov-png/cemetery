@@ -197,3 +197,11 @@ h1 {
 .single-view-controls button { border: 1px solid #b7d38e; border-radius: 999px; background: transparent; color: #eaf5dc; padding: 10px 14px; }
 .single-view-controls button[aria-pressed="true"] { background: #b7d38e; color: #101615; }
 .single-view-controls span { color: #9baaa0; font-size: .8rem; }
+.live-world-map-panel { max-height: 92vh; overflow: auto; }
+.live-map-status { color: #c1d9a0; font-weight: 700; margin: 10px 0; }
+.live-map-views { position: relative; min-height: 280px; }
+.live-map-canvas { display: block; width: 100%; height: min(48vh, 430px); min-height: 280px; border-radius: 18px; background: #101615; }
+.live-map-camera-placeholder { position: absolute; z-index: 1; inset: 12px auto auto 12px; color: #c1d9a0; font-size: .72rem; opacity: .7; pointer-events: none; }
+.live-map-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; color: #dcebd0; font-size: .82rem; }
+.live-map-camera-only .live-map-canvas { opacity: 0; }
+.live-map-3d-only .live-map-camera-placeholder { display: none; }

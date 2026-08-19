@@ -1,0 +1,17 @@
+import type { FusionInput, LiveMapSnapshot, WorldBounds } from './liveMappingTypes'
+import type { SpatialPose } from '../spatial/spatialTypes'
+import { cameraToWorld } from './WorldPointTransformer'
+
+type Voxel = { x: number; y: number; z: number; r: number; g: number; b: number; observations: number; confidence: number; lastSeen: number }
+export class VoxelMap {
+  private readonly voxels = new Map<string, Voxel>(); private bounds: WorldBounds | null = null
+  constructor(private readonly voxelSize = 0.055, private readonly maxVoxels = 100_000) {}
+  clear(): void { this.voxels.clear(); this.bounds = null }
+  fuse(input: FusionInput): number {
+    const canvas = document.createElement('canvas'); canvas.width = input.depth.width; canvas.height = input.depth.height; const context = canvas.getContext('2d'); if (!context) return 0; context.drawImage(input.rgb, 0, 0, canvas.width, canvas.height); const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data; let added = 0
+    for (let y = 2; y < input.depth.height - 2; y += 5) for (let x = 2; x < input.depth.width - 2; x += 5) { const index = y * input.depth.width + x; const d = input.depth.values[index]; if (!Number.isFinite(d) || d < 0.04 || d > 0.98) continue; const z = 0.25 + (1 - d) * 1.8; const localX = (x / input.depth.width - 0.5) * z * 1.4; const localY = -(y / input.depth.height - 0.5) * z * 1.4; const [wx, wy, wz] = cameraToWorld(localX, localY, z, input.pose); const ix = Math.floor(wx / this.voxelSize); const iy = Math.floor(wy / this.voxelSize); const iz = Math.floor(wz / this.voxelSize); const key = `${ix}:${iy}:${iz}`; const pixel = index * 4; const old = this.voxels.get(key); if (old) { const n = old.observations + 1; old.x += (wx - old.x) / n; old.y += (wy - old.y) / n; old.z += (wz - old.z) / n; old.r += (pixels[pixel] / 255 - old.r) / n; old.g += (pixels[pixel + 1] / 255 - old.g) / n; old.b += (pixels[pixel + 2] / 255 - old.b) / n; old.observations = n; old.confidence = Math.min(1, old.confidence + 0.02); old.lastSeen = Date.now() } else if (this.voxels.size < this.maxVoxels) { this.voxels.set(key, { x: wx, y: wy, z: wz, r: pixels[pixel] / 255, g: pixels[pixel + 1] / 255, b: pixels[pixel + 2] / 255, observations: 1, confidence: input.trackingConfidence, lastSeen: Date.now() }); added += 1; this.updateBounds(wx, wy, wz) } }
+    return added
+  }
+  snapshot(keyframes: number, depthFps: number, fusionFps: number, tracking: LiveMapSnapshot['tracking'], pose: SpatialPose | null): LiveMapSnapshot { const positions = new Float32Array(this.voxels.size * 3); const colors = new Float32Array(this.voxels.size * 3); let i = 0; for (const voxel of this.voxels.values()) { positions[i * 3] = voxel.x; positions[i * 3 + 1] = voxel.y; positions[i * 3 + 2] = voxel.z; colors[i * 3] = voxel.r; colors[i * 3 + 1] = voxel.g; colors[i * 3 + 2] = voxel.b; i += 1 } return { positions, colors, voxels: this.voxels.size, keyframes, bounds: this.bounds, depthFps, fusionFps, tracking, pose } }
+  private updateBounds(x: number, y: number, z: number): void { if (!this.bounds) this.bounds = { minX: x, minY: y, minZ: z, maxX: x, maxY: y, maxZ: z }; else { this.bounds.minX = Math.min(this.bounds.minX, x); this.bounds.minY = Math.min(this.bounds.minY, y); this.bounds.minZ = Math.min(this.bounds.minZ, z); this.bounds.maxX = Math.max(this.bounds.maxX, x); this.bounds.maxY = Math.max(this.bounds.maxY, y); this.bounds.maxZ = Math.max(this.bounds.maxZ, z) } }
+}
