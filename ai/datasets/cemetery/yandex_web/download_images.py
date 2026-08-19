@@ -54,10 +54,8 @@ def _download(candidate: Candidate, root: Path, timeout: int = 45) -> dict:
             for chunk in response.iter_content(1024 * 1024):
                 if chunk: stream.write(chunk)
         with Image.open(temporary) as image:
-            image.load(); width, height = image.size; phash = str(imagehash.phash(image))
-        if width < 500 or height < 500: raise ValueError("image smaller than 500x500")
-        ratio = width / height
-        if ratio < 0.2 or ratio > 5: raise ValueError("unreasonable aspect ratio")
+            image.load(); width, height = image.size; phash = str(imagehash.phash(image)); detected_suffix = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif", "BMP": ".bmp", "TIFF": ".tif"}.get(image.format or "")
+        if suffix == ".img" and detected_suffix: suffix = detected_suffix
         digest = sha256(temporary); image_id = digest[:24]; image_path = root / "raw/images" / f"{image_id}{suffix}"; temporary.replace(image_path)
         metadata = {"source": "yandex_images_web", "query": candidate.query, "rank": candidate.rank, "sourcePage": candidate.sourcePage, "imageUrl": candidate.imageUrl, "previewUrl": candidate.previewUrl, "domain": candidate.domain, "title": candidate.title, "downloadedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"), "width": width, "height": height, "sha256": digest, "phash": phash, "licenseStatus": "unverified", "datasetTier": "web_bootstrap", "filename": image_path.name}
         (root / "raw/metadata" / f"{image_id}.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")

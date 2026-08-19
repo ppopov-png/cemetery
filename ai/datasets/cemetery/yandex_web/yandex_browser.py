@@ -37,7 +37,9 @@ def _is_blocked(page: Page) -> bool:
 
 def _urls(value: object) -> list[str]:
     found: list[str] = []
-    if isinstance(value, str) and value.startswith(("http://", "https://")): found.append(value)
+    if isinstance(value, str):
+        text = value.replace("\\/", "/")
+        found.extend(re.findall(r"(?:https?:)?//[^\"'\\\s]+", text))
     elif isinstance(value, dict):
         for item in value.values(): found.extend(_urls(item))
     elif isinstance(value, list):
@@ -47,8 +49,8 @@ def _urls(value: object) -> list[str]:
 
 def _looks_like_image_url(url: str) -> bool:
     lowered = url.casefold()
-    if "yastatic.net/lego" in lowered or lowered.startswith("data:"): return False
-    return any(token in lowered for token in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", "get-images", "image", "avatar"))
+    if "yastatic.net/lego" in lowered or "yandex.ru/images/search" in lowered or lowered.startswith("data:"): return False
+    return "avatars.mds.yandex.net" in lowered or "get-images" in lowered or any(token in lowered for token in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif"))
 
 
 def _extract_cards(page: Page, query: str, start_rank: int) -> list[Candidate]:
