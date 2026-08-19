@@ -14,7 +14,7 @@
     "onnxruntime-web": "^1.27.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "three": "^0.185.1"
+    "three": "0.183.2"
   },
   "devDependencies": {
     "@types/react": "^19.1.10",
