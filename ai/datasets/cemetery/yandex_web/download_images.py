@@ -15,7 +15,6 @@ import requests
 from yandex_browser import Candidate
 
 
-BAD_TERMS = ("map", "maps", "карта", "схема", "aerial", "drone", "satellite", "спутник", "favicon", "logo", "иконка", "thumbnail")
 IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif", "image/bmp": ".bmp", "image/tiff": ".tif"}
 
 
@@ -27,8 +26,9 @@ def sha256(path: Path) -> str:
 
 
 def reject_reason(candidate: Candidate) -> str | None:
-    text = " ".join(filter(None, [candidate.title, candidate.imageUrl, candidate.sourcePage])).casefold()
-    return next((f"irrelevant metadata: {term}" for term in BAD_TERMS if term in text), None)
+    # Web bootstrap intentionally does not classify image content. Semantic review
+    # belongs after collection; only technical validation happens in _download().
+    return None
 
 
 def existing_index(root: Path) -> tuple[set[str], set[str]]:

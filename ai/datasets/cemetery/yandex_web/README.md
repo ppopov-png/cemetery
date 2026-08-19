@@ -23,6 +23,6 @@ If Yandex presents CAPTCHA, an access block, or a rate-limit page, the collector
 
 Downloaded files are stored under this directory in `raw/images/`, with metadata in `raw/metadata/`. `cleaned/images/`, `cleaned/metadata/`, `rejected/`, `reports/`, and `state/` are prepared for later stages. All accepted web candidates have `licenseStatus: unverified` and `datasetTier: web_bootstrap`; no license is inferred from a search result.
 
-Images must decode in Pillow, be at least 500x500, and have a reasonable aspect ratio. Obvious maps, schemes, aerial/drone imagery, logos, favicons, and thumbnails are rejected. The collector does not try to decide whether an image contains a grave, and it creates no bounding boxes, OCR, or training artifacts. Exact SHA-256 and pHash duplicates are not stored again.
+Images must decode in Pillow, be at least 500x500, and have a reasonable aspect ratio. The collector does not classify content or reject an image because its title contains a particular word: maps, schemes, monuments, graves, and ambiguous web candidates are all left for later human/vision review. It creates no bounding boxes, OCR, or training artifacts. Exact SHA-256 and pHash duplicates are not stored again.
 
 State is saved after each query and after each download batch. Ctrl+C saves `state/collector-state.json`. Resume skips URLs already seen and continues from the last query.

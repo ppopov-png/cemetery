@@ -25,6 +25,17 @@ def print_progress(query: str, state: dict, discovered: int = 0) -> None:
     print(f"\nQuery: {query}\nResults discovered: {discovered}\nDownloaded: {state.get('downloaded', 0)}\nRejected: {state.get('rejected', 0)}\nDuplicates: {state.get('duplicates', 0)}\nTotal unique: {state.get('accepted', 0)}", flush=True)
 
 
+def accepted_urls(root: Path) -> set[str]:
+    result: set[str] = set()
+    for path in (root / "raw/metadata").glob("*.json"):
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+            if item.get("imageUrl"): result.add(item["imageUrl"])
+        except (OSError, json.JSONDecodeError):
+            continue
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Collect web image candidates from Yandex Images without API keys."); parser.add_argument("--limit", type=int, default=5000); parser.add_argument("--max-per-query", type=int, default=100); parser.add_argument("--max-per-domain", type=int, default=150); parser.add_argument("--workers", type=int, default=8); parser.add_argument("--scroll-delay", type=float, default=0.8); parser.add_argument("--headed", action="store_true"); parser.add_argument("--resume", action="store_true"); args = parser.parse_args()
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(errors="replace")
@@ -43,7 +54,7 @@ def main() -> int:
                     state["status"] = "YANDEX_DOM_CHANGED"; save_state(state_path, state); print(f"YANDEX_DOM_CHANGED: {error}"); return 3
                 except Exception as error:
                     state["status"] = "YANDEX_DOM_CHANGED"; state["error"] = str(error); save_state(state_path, state); print(f"YANDEX_DOM_CHANGED: {error}"); return 3
-                seen = set(state.get("seenUrls", [])); unseen = [candidate for candidate in candidates if candidate.imageUrl not in seen]; state["discovered"] = state.get("discovered", 0) + len(unseen); state["seenUrls"] = list(dict.fromkeys(state.get("seenUrls", []) + [candidate.imageUrl for candidate in candidates])); save_state(state_path, state); print_progress(query, state, len(candidates))
+                seen = accepted_urls(output) if args.resume else set(); unseen = [candidate for candidate in candidates if candidate.imageUrl not in seen]; state["discovered"] = state.get("discovered", 0) + len(unseen); state["seenUrls"] = list(dict.fromkeys(state.get("seenUrls", []) + [candidate.imageUrl for candidate in candidates])); save_state(state_path, state); print_progress(query, state, len(candidates))
                 remaining = max(0, args.limit - state.get("accepted", 0)); result = download_candidates(unseen[:remaining], output, args.workers, args.max_per_domain, state); state["acceptedTitles"] = (state.get("acceptedTitles", []) + [item.get("title") for item in result["accepted"] if item.get("title")])[:20]; state["queryIndex"] = index + 1; save_state(state_path, state); print_progress(query, state, len(candidates))
             state["status"] = "completed"; save_state(state_path, state); (output / "reports" / "latest.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"); return 0
     except KeyboardInterrupt:
