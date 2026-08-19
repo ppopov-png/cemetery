@@ -9,7 +9,7 @@ export class OnnxDepthEstimator {
   private backend: DepthBackend = 'wasm'
 
   async load(): Promise<void> {
-    ort.env.wasm.wasmPaths = new URL('assets/', new URL(import.meta.env.BASE_URL, window.location.origin)).toString()
+    ort.env.wasm.wasmPaths = new URL('ort/', new URL(import.meta.env.BASE_URL, window.location.origin)).toString()
     const gpu = 'gpu' in navigator && await (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu?.requestAdapter()
     this.backend = gpu ? 'webgpu' : 'wasm'
     if (!gpu) ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 2)
