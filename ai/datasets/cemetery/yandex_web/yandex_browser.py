@@ -26,6 +26,7 @@ class Candidate:
     domain: str | None
     query: str
     rank: int
+    cardIndex: int | None = None
 
 
 def _is_blocked(page: Page) -> bool:
@@ -62,7 +63,9 @@ def _extract_cards(page: Page, query: str, start_rank: int) -> list[Candidate]:
         const attrs = {};
         for (const attr of [...parent.attributes, ...node.attributes]) attrs[attr.name] = attr.value;
         const image = node.tagName === 'IMG' ? node : parent.querySelector('img');
-        rows.push({attrs, text: (parent.innerText || '').slice(0, 500), img: image ? {src: image.src, alt: image.alt, attrs: [...image.attributes].reduce((a,x)=>(a[x.name]=x.value,a),{})} : null, href: parent.href || null});
+        const cardIndex = rows.length;
+        parent.setAttribute('data-cemetery-bootstrap-card', String(cardIndex));
+        rows.push({cardIndex, attrs, text: (parent.innerText || '').slice(0, 500), img: image ? {src: image.src, alt: image.alt, attrs: [...image.attributes].reduce((a,x)=>(a[x.name]=x.value,a),{})} : null, href: parent.href || null});
       }
       return rows;
     }""")
@@ -81,8 +84,43 @@ def _extract_cards(page: Page, query: str, start_rank: int) -> list[Candidate]:
         if not original or original in seen: continue
         seen.add(original); href = row.get("href"); domain = urlparse(href or original).netloc or None
         title = image_data.get("alt") or row.get("text") or None
-        candidates.append(Candidate(original, preview, href, re.sub(r"\s+", " ", title).strip() if title else None, domain, query, start_rank + len(candidates) + 1))
+        candidates.append(Candidate(original, preview, href, re.sub(r"\s+", " ", title).strip() if title else None, domain, query, start_rank + len(candidates) + 1, row.get("cardIndex")))
     return candidates
+
+
+def resolve_original_urls(page: Page, candidates: list[Candidate]) -> None:
+    """Open cards one at a time and capture the image request made by Yandex."""
+    for candidate in candidates:
+        if candidate.cardIndex is None or "yandex" not in candidate.imageUrl.casefold():
+            continue
+        responses: list[tuple[int, str]] = []
+
+        def on_response(response) -> None:
+            try:
+                if response.request.resource_type != "image": return
+                if not response.headers.get("content-type", "").startswith("image/"): return
+                if not _looks_like_image_url(response.url): return
+                size = int(response.headers.get("content-length", "0") or 0)
+                responses.append((size, response.url))
+            except (ValueError, KeyError):
+                return
+
+        page.on("response", on_response)
+        try:
+            card = page.locator(f'[data-cemetery-bootstrap-card="{candidate.cardIndex}"]').first
+            if not card.count(): continue
+            card.scroll_into_view_if_needed(timeout=5000); card.click(timeout=5000); page.wait_for_timeout(800)
+            if _is_blocked(page): raise YandexBlockedOrCaptcha("YANDEX_BLOCKED_OR_CAPTCHA")
+            if responses:
+                _, url = max(responses, key=lambda item: item[0])
+                if url != candidate.imageUrl:
+                    candidate.previewUrl = candidate.imageUrl; candidate.imageUrl = url; candidate.domain = urlparse(url).netloc or candidate.domain
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(200)
+        except PlaywrightTimeoutError:
+            page.keyboard.press("Escape")
+        finally:
+            page.off("response", on_response)
 
 
 def collect_query(page: Page, query: str, max_results: int, scroll_delay: float) -> list[Candidate]:
@@ -102,4 +140,5 @@ def collect_query(page: Page, query: str, max_results: int, scroll_delay: float)
         if stagnant >= 4: break
         previous_height = height; page.evaluate("window.scrollTo(0, document.body.scrollHeight)"); page.wait_for_timeout(int(scroll_delay * 1000))
     if not results: raise YandexDomChanged(f"No image cards detected; Yandex DOM may have changed for query: {query}")
+    resolve_original_urls(page, results)
     return results
