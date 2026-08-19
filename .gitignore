@@ -36,5 +36,10 @@ ai/datasets/cemetery/yandex_web/reports/*
 ai/datasets/cemetery/yandex_web/state/*
 ai/datasets/cemetery/.venv/
 ai/datasets/cemetery/prepared/
+ai/.venv-*/
+ai/third_party/
+ai/3d-output/
+ai/triposr-output/
+ai/test-input.jpg
 __pycache__/
 *.pyc
