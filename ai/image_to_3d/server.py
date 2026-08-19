@@ -5,16 +5,18 @@ mask and single-image mesh pipeline, not a metric multi-view reconstruction.
 """
 from __future__ import annotations
 
-import argparse, threading, uuid
+import argparse, json, threading, uuid
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import cv2, numpy as np
 import rembg, torch
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
+from transformers import AutoImageProcessor, DepthAnythingForDepthEstimation
 
 AI_ROOT = Path(__file__).resolve().parents[1]
 MODEL_ROOT = AI_ROOT / "third_party" / "triposr"
@@ -32,47 +34,40 @@ jobs: dict[str, dict[str, Any]] = {}
 mapping_sessions: dict[str, dict[str, Any]] = {}
 model = None
 rembg_session = None
+depth_model = None
+depth_processor = None
 model_lock = threading.Lock()
 
 
 @app.get("/health")
 def health():
-    return {"ok": True, "modelLoaded": model is not None, "cuda": torch.cuda.is_available()}
+    return {"ok": True, "modelLoaded": model is not None, "depthModelLoaded": depth_model is not None, "cuda": torch.cuda.is_available()}
 
 @app.post("/api/mapping/start")
 def start_mapping():
     session_id = uuid.uuid4().hex
-    mapping_sessions[session_id] = {"sessionId": session_id, "status": "active", "frames": 0, "features": 0, "mapPoints": 0, "pose": {"x": 0.0, "y": 0.0, "z": 0.0}, "points": [], "previous": None}
+    mapping_sessions[session_id] = {"sessionId": session_id, "status": "active", "frames": 0, "features": 0, "mapPoints": 0, "pose": None, "points": [], "voxels": {}}
     return {"sessionId": session_id}
 
 @app.post("/api/mapping/{session_id}/frame")
-async def mapping_frame(session_id: str, frame: UploadFile = File(...)):
+async def mapping_frame(session_id: str, frame: UploadFile = File(...), pose: str = Form(...)):
     session = mapping_sessions.get(session_id)
-    if not session or session["status"] != "active": return {"status": "failed", "message": "Mapping session is not active"}
-    image = cv2.imdecode(np.frombuffer(await frame.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
-    if image is None: return {"status": "failed", "message": "Invalid image"}
-    orb = cv2.ORB_create(nfeatures=900); keypoints, descriptors = orb.detectAndCompute(image, None); matches = []
-    if session["previous"] is not None and descriptors is not None and session["previous"][1] is not None:
-        raw = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(session["previous"][1], descriptors, k=2)
-        matches = [m for m, n in raw if m.distance < 0.75 * n.distance]
-        if len(matches) >= 8:
-            old = np.float32([session["previous"][0][m.queryIdx].pt for m in matches]); new = np.float32([keypoints[m.trainIdx].pt for m in matches]); matrix, _ = cv2.estimateAffinePartial2D(old, new, method=cv2.RANSAC)
-            if matrix is not None: session["pose"]["x"] += float(matrix[0, 2] / max(1, image.shape[1])); session["pose"]["y"] += float(matrix[1, 2] / max(1, image.shape[0])); session["pose"]["z"] += float(1.0 - matrix[0, 0])
-            focal = float(max(image.shape)); K = np.array([[focal, 0, image.shape[1] / 2], [0, focal, image.shape[0] / 2], [0, 0, 1]], dtype=np.float64)
-            essential, _ = cv2.findEssentialMat(old, new, K, method=cv2.RANSAC, prob=0.999, threshold=1.0)
-            if essential is not None:
-                _, rotation, translation, mask = cv2.recoverPose(essential, old, new, K)
-                p1 = K @ np.hstack((np.eye(3), np.zeros((3, 1)))); p2 = K @ np.hstack((rotation, translation)); triangulated = cv2.triangulatePoints(p1, p2, old.T, new.T); triangulated /= np.maximum(triangulated[3:4], 1e-8)
-                valid = mask.ravel().astype(bool) if mask is not None else np.ones(len(old), dtype=bool)
-                session["points"] = (session["points"] + [[float(x), float(y), float(z)] for x, y, z, ok in zip(triangulated[0], triangulated[1], triangulated[2], valid) if ok and np.isfinite(x + y + z) and abs(z) < 100])[-3000:]
-    session["previous"] = (keypoints, descriptors); session["frames"] += 1; session["features"] = len(keypoints); session["mapPoints"] += len(matches)
-    return {"sessionId": session_id, "status": "active", "frame": session["frames"], "features": session["features"], "matches": len(matches), "mapPoints": len(session["points"]), "points": session["points"], "pose": session["pose"]}
+    if not session or session["status"] != "active": raise HTTPException(409, "Mapping session is not active")
+    try:
+        camera_pose = json.loads(pose)
+        if not all(key in camera_pose for key in ("position", "quaternion")): raise ValueError("pose must contain position and quaternion")
+        image = Image.open(BytesIO(await frame.read())).convert("RGB")
+        points = estimate_depth_points(image, camera_pose)
+    except Exception as exc:
+        raise HTTPException(422, f"DEPTH_MAPPING_FAILED: {type(exc).__name__}: {exc}") from exc
+    session["frames"] += 1; session["pose"] = camera_pose; session["points"] = fuse_voxels(session["voxels"], points); session["mapPoints"] = len(session["points"])
+    return {"sessionId": session_id, "status": "active", "frame": session["frames"], "features": 0, "matches": 0, "mapPoints": session["mapPoints"], "points": session["points"], "pose": camera_pose}
 
 @app.post("/api/mapping/{session_id}/stop")
 def stop_mapping(session_id: str):
     session = mapping_sessions.get(session_id)
     if not session: return {"status": "failed", "message": "Unknown mapping session"}
-    session["status"] = "completed"; session.pop("previous", None); return session
+    session["status"] = "completed"; session.pop("voxels", None); return session
 
 
 @app.post("/api/scan")
@@ -99,13 +94,50 @@ def scan_status(job_id: str):
 
 
 def load_model():
-    global model, rembg_session
+    global model, rembg_session, depth_model, depth_processor
     if model is None:
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
         model = TSR.from_pretrained("stabilityai/TripoSR", config_name="config.yaml", weight_name="model.ckpt")
         model.renderer.set_chunk_size(4096)
         model.to(device)
         rembg_session = rembg.new_session()
+    if depth_model is None:
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf")
+        depth_model = DepthAnythingForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf").to(device).eval()
+
+def estimate_depth_points(image: Image.Image, pose: dict[str, Any]) -> list[tuple[float, float, float, float, float, float]]:
+    if depth_model is None or depth_processor is None: raise RuntimeError("Depth Anything model is not loaded")
+    width, height = image.size
+    inputs = depth_processor(images=image, return_tensors="pt")
+    device = next(depth_model.parameters()).device
+    inputs = {key: value.to(device) for key, value in inputs.items()}
+    with torch.inference_mode(): prediction = depth_model(**inputs).predicted_depth
+    prediction = torch.nn.functional.interpolate(prediction.unsqueeze(1), size=(height, width), mode="bicubic", align_corners=False).squeeze().detach().float().cpu().numpy()
+    prediction = (prediction - prediction.min()) / max(float(prediction.max() - prediction.min()), 1e-6)
+    pixels = np.asarray(image); focal = float(max(width, height)); cx, cy = width / 2, height / 2; q = pose["quaternion"]; p = pose["position"]; result = []
+    for y in range(0, height, 8):
+        for x in range(0, width, 8):
+            depth = float(prediction[y, x]); z = 0.3 + (1.0 - depth) * 2.0
+            local = np.array([(x - cx) * z / focal, -(y - cy) * z / focal, z], dtype=np.float32)
+            world = rotate_by_quaternion(local, q) + np.asarray(p, dtype=np.float32)
+            r, g, b = pixels[y, x] / 255.0; result.append((float(world[0]), float(world[1]), float(world[2]), float(r), float(g), float(b)))
+    return result
+
+def rotate_by_quaternion(vector: np.ndarray, q: list[float]) -> np.ndarray:
+    x, y, z, w = q; qv = np.array([x, y, z], dtype=np.float32)
+    return vector + 2.0 * np.cross(qv, np.cross(qv, vector) + w * vector)
+
+def fuse_voxels(voxels: dict[str, dict[str, float]], points: list[tuple[float, float, float, float, float, float]]) -> list[list[float]]:
+    size = 0.08
+    for x, y, z, r, g, b in points:
+        key = f"{int(np.floor(x / size))}:{int(np.floor(y / size))}:{int(np.floor(z / size))}"; old = voxels.get(key)
+        if old is None: voxels[key] = {"x": x, "y": y, "z": z, "r": r, "g": g, "b": b, "n": 1}
+        else:
+            n = old["n"] + 1
+            for name, value in (("x", x), ("y", y), ("z", z), ("r", r), ("g", g), ("b", b)): old[name] += (value - old[name]) / n
+            old["n"] = n
+    return [[v["x"], v["y"], v["z"]] for v in voxels.values()]
 
 
 def process_job(job_id: str, paths: list[Path]):
