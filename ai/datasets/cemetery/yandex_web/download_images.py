@@ -8,8 +8,6 @@ from urllib.parse import urlparse
 import hashlib
 import json
 
-import imagehash
-from PIL import Image
 import requests
 
 from yandex_browser import Candidate
@@ -56,9 +54,10 @@ def _download(candidate: Candidate, root: Path, timeout: int = 30) -> dict:
         with temporary.open("wb") as stream:
             for chunk in response.iter_content(1024 * 1024):
                 if chunk: stream.write(chunk)
-        with Image.open(temporary) as image:
-            image.load(); width, height = image.size; phash = str(imagehash.phash(image)); detected_suffix = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif", "BMP": ".bmp", "TIFF": ".tif"}.get(image.format or "")
-        if suffix == ".img" and detected_suffix: suffix = detected_suffix
+        # Do not reject candidates based on Pillow decoding, dimensions, format,
+        # aspect ratio, or semantic heuristics. This stage is a raw web bootstrap:
+        # every successfully downloaded response is kept for later review.
+        width = 0; height = 0; phash = ""
         digest = sha256(temporary); image_id = digest[:24]; image_path = root / "raw/images" / f"{image_id}{suffix}"; temporary.replace(image_path)
         metadata = {"source": "yandex_images_web", "query": candidate.query, "rank": candidate.rank, "sourcePage": candidate.sourcePage, "imageUrl": image_url, "previewUrl": candidate.previewUrl, "alternateImageUrls": candidate.alternateUrls or [], "domain": candidate.domain, "title": candidate.title, "downloadedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"), "width": width, "height": height, "sha256": digest, "phash": phash, "licenseStatus": "unverified", "datasetTier": "web_bootstrap", "filename": image_path.name}
         (root / "raw/metadata" / f"{image_id}.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -79,7 +78,7 @@ def download_candidates(candidates: list[Candidate], root: Path, workers: int, m
             if result["status"] == "rejected":
                 rejected += 1; (root / "rejected" / f"{hashlib.sha256(candidate.imageUrl.encode()).hexdigest()[:24]}.json").write_text(json.dumps({**asdict(candidate), "reason": result["reason"]}, ensure_ascii=False, indent=2), encoding="utf-8"); continue
             metadata = result["metadata"]
-            if domain_counts.get(domain, 0) >= max_per_domain or metadata["sha256"] in shas or metadata["phash"] in phashes:
+            if domain_counts.get(domain, 0) >= max_per_domain or metadata["sha256"] in shas or (metadata["phash"] and metadata["phash"] in phashes):
                 duplicates += 1; (root / "raw/images" / metadata["filename"]).unlink(missing_ok=True); (root / "raw/metadata" / f"{metadata['sha256']}.json").unlink(missing_ok=True); continue
             domain_counts[domain] = domain_counts.get(domain, 0) + 1; batch_domains[domain] = batch_domains.get(domain, 0) + 1; shas.add(metadata["sha256"]); phashes.add(metadata["phash"]); accepted.append(metadata)
     state["downloaded"] = state.get("downloaded", 0) + len(accepted); state["accepted"] = state.get("accepted", 0) + len(accepted); state["rejected"] = state.get("rejected", 0) + rejected; state["duplicates"] = state.get("duplicates", 0) + duplicates
