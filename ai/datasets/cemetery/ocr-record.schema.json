@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["imageId", "crop", "rawTranscription", "verifiedTranscription", "script", "language", "verified"],
+  "properties": {
+    "imageId": {"type": "string"},
+    "crop": {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}, {"type": "number"}, {"type": "number"}], "minItems": 4, "maxItems": 4},
+    "rawTranscription": {"type": "string"},
+    "verifiedTranscription": {"type": "string"},
+    "script": {"enum": ["Cyrillic", "Latin", "Hebrew", "Greek", "Arabic", "Armenian", "Georgian", "Other", "Unknown"]},
+    "language": {"type": "string"},
+    "verified": {"type": "boolean"}
+  }
+}

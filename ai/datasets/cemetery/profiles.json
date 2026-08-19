@@ -1,0 +1,10 @@
+{
+  "russia_priority": {
+    "countries": ["Russia", "Ukraine", "Belarus", "Poland", "Georgia", "Armenia"],
+    "queries": ["gravestones", "grave markers", "cemeteries", "headstones", "tombstones", "memorial stones", "Russian gravestones", "Soviet gravestones", "Orthodox cemetery"]
+  },
+  "global_multilingual": {
+    "countries": ["Russia", "Ukraine", "Belarus", "Poland", "Germany", "France", "United Kingdom", "United States", "Israel", "Greece", "Armenia", "Georgia"],
+    "queries": ["gravestones", "grave markers", "cemeteries", "headstones", "tombstones", "memorial stones"]
+  }
+}
