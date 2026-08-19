@@ -18,6 +18,9 @@ ROOT = Path(__file__).resolve().parent
 def queries() -> list[str]:
     bank = json.loads((ROOT / "query_bank_ru.json").read_text(encoding="utf-8")); values = list(bank["baseQueries"]) + list(bank["namedQueries"])
     values.extend(template.format(city=city) for city in bank["cities"] for template in bank["cityTemplates"])
+    # Force photo-oriented results for every query, including named cemeteries
+    # and generated city queries.
+    values = [query if query.casefold().endswith(" фото") else f"{query} Фото" for query in values]
     return list(dict.fromkeys(values))
 
 
