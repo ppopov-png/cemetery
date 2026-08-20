@@ -46,17 +46,16 @@ def health():
 @app.post("/api/mapping/start")
 def start_mapping():
     session_id = uuid.uuid4().hex
-    mapping_sessions[session_id] = {"sessionId": session_id, "status": "active", "frames": 0, "features": 0, "mapPoints": 0, "pose": None, "points": [], "voxels": {}}
+    mapping_sessions[session_id] = {"sessionId": session_id, "status": "active", "frames": 0, "features": 0, "mapPoints": 0, "pose": None, "points": [], "voxels": {}, "previousGray": None, "rotation": np.eye(3), "position": np.zeros(3, dtype=np.float32)}
     return {"sessionId": session_id}
 
 @app.post("/api/mapping/{session_id}/frame")
-async def mapping_frame(session_id: str, frame: UploadFile = File(...), pose: str = Form(...)):
+async def mapping_frame(session_id: str, frame: UploadFile = File(...)):
     session = mapping_sessions.get(session_id)
     if not session or session["status"] != "active": raise HTTPException(409, "Mapping session is not active")
     try:
-        camera_pose = json.loads(pose)
-        if not all(key in camera_pose for key in ("position", "quaternion")): raise ValueError("pose must contain position and quaternion")
         image = Image.open(BytesIO(await frame.read())).convert("RGB")
+        camera_pose = estimate_backend_pose(session, np.asarray(image.convert("L")))
         points = estimate_depth_points(image, camera_pose)
     except Exception as exc:
         raise HTTPException(422, f"DEPTH_MAPPING_FAILED: {type(exc).__name__}: {exc}") from exc
@@ -67,7 +66,7 @@ async def mapping_frame(session_id: str, frame: UploadFile = File(...), pose: st
 def stop_mapping(session_id: str):
     session = mapping_sessions.get(session_id)
     if not session: return {"status": "failed", "message": "Unknown mapping session"}
-    session["status"] = "completed"; session.pop("voxels", None); return session
+    session["status"] = "completed"; session.pop("voxels", None); session.pop("previousGray", None); return session
 
 
 @app.post("/api/scan")
@@ -105,6 +104,27 @@ def load_model():
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
         depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf")
         depth_model = DepthAnythingForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf").to(device).eval()
+
+def estimate_backend_pose(session: dict[str, Any], gray: np.ndarray) -> dict[str, Any]:
+    if session["previousGray"] is None:
+        session["previousGray"] = gray
+        return {"position": session["position"].tolist(), "quaternion": [0.0, 0.0, 0.0, 1.0], "confidence": 0.0, "method": "PC_VISUAL_ODOMETRY", "scale": "RELATIVE"}
+    orb = cv2.ORB_create(nfeatures=1200); previous_keypoints, previous_descriptors = orb.detectAndCompute(session["previousGray"], None); keypoints, descriptors = orb.detectAndCompute(gray, None)
+    if previous_descriptors is None or descriptors is None: raise RuntimeError("PC pose tracking found no visual features")
+    pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(previous_descriptors, descriptors, k=2); good = [m for m, n in pairs if m.distance < 0.72 * n.distance]
+    if len(good) < 12: raise RuntimeError(f"PC pose tracking has only {len(good)} matches")
+    old = np.float32([previous_keypoints[m.queryIdx].pt for m in good]); new = np.float32([keypoints[m.trainIdx].pt for m in good]); focal = float(max(gray.shape)); K = np.array([[focal, 0, gray.shape[1] / 2], [0, focal, gray.shape[0] / 2], [0, 0, 1]], dtype=np.float64)
+    essential, _ = cv2.findEssentialMat(old, new, K, method=cv2.RANSAC, prob=0.999, threshold=1.0)
+    if essential is None: raise RuntimeError("PC pose tracking could not estimate camera motion")
+    inliers, rotation, translation, _ = cv2.recoverPose(essential, old, new, K)
+    if inliers < 8: raise RuntimeError(f"PC pose tracking has only {inliers} inliers")
+    session["position"] = session["position"] + session["rotation"].dot(translation[:, 0].astype(np.float32)) * 0.08; session["rotation"] = session["rotation"].dot(rotation.astype(np.float32)); session["previousGray"] = gray
+    q = rotation_matrix_to_quaternion(session["rotation"]); return {"position": session["position"].tolist(), "quaternion": q, "confidence": min(1.0, inliers / max(20, len(good))), "method": "PC_VISUAL_ODOMETRY", "scale": "RELATIVE"}
+
+def rotation_matrix_to_quaternion(matrix: np.ndarray) -> list[float]:
+    trace = float(np.trace(matrix))
+    if trace > 0: s = 2.0 * np.sqrt(trace + 1.0); return [float((matrix[2, 1] - matrix[1, 2]) / s), float((matrix[0, 2] - matrix[2, 0]) / s), float((matrix[1, 0] - matrix[0, 1]) / s), float(0.25 * s)]
+    index = int(np.argmax([matrix[0, 0], matrix[1, 1], matrix[2, 2]])); next_index = [1, 2, 0][index]; last_index = [2, 0, 1][index]; s = 2.0 * np.sqrt(max(1e-6, 1.0 + matrix[index, index] - matrix[next_index, next_index] - matrix[last_index, last_index])); q = [0.0, 0.0, 0.0, 0.0]; q[index] = 0.25 * s; q[3] = (matrix[last_index, next_index] - matrix[next_index, last_index]) / s; q[next_index] = (matrix[next_index, index] + matrix[index, next_index]) / s; q[last_index] = (matrix[last_index, index] + matrix[index, last_index]) / s; return q
 
 def estimate_depth_points(image: Image.Image, pose: dict[str, Any]) -> list[tuple[float, float, float, float, float, float]]:
     if depth_model is None or depth_processor is None: raise RuntimeError("Depth Anything model is not loaded")
