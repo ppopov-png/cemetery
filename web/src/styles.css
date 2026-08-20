@@ -177,12 +177,12 @@ h1 {
 .remote-result model-viewer { display: block; width: 100%; height: 52vh; background: radial-gradient(circle, #30443b, #050807); }
 .remote-error { padding: 12px; border: 1px solid #70473d; border-radius: 12px; color: #f0c0a9; font-size: .85rem; }
 .capture-object-button-secondary { bottom: 58px; color: #f2f5ed; background: #1a2521; border: 1px solid #b7cf9c; }
-.mapping-panel { position: fixed; inset: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)); z-index: 21; overflow: auto; padding: 20px; border: 1px solid #b7cf9c; border-radius: 22px; color: #f2f5ed; background: rgba(10, 17, 14, .97); box-shadow: 0 20px 70px #000; }
+.mapping-panel { position: fixed; inset: 0; z-index: 21; overflow: hidden; display: flex; flex-direction: column; padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); color: #f2f5ed; background: #050807; }
 .mapping-panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .mapping-panel h2 { margin: 0; font-size: 1.45rem; }
 .mapping-stats { display: grid; gap: 10px; margin: 22px 0; padding: 16px; border: 1px solid #34443d; border-radius: 14px; color: #b7cf9c; }
-.sparse-map-viewer { position: relative; height: 250px; overflow: hidden; margin: 16px 0; border: 1px solid #34443d; border-radius: 14px; }
-.sparse-map-viewer canvas { display: block; width: 100%; height: 250px; }
+.sparse-map-viewer { position: relative; flex: 1; min-height: 0; overflow: hidden; margin: 12px 0; border: 1px solid #34443d; border-radius: 14px; }
+.sparse-map-viewer canvas { display: block; width: 100%; height: 100%; }
 .sparse-map-viewer span { position: absolute; z-index: 1; top: 10px; left: 12px; color: #8d9b93; font-size: .72rem; pointer-events: none; }
 
 @media (min-width: 640px) {

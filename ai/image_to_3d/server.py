@@ -135,9 +135,17 @@ def estimate_depth_points(image: Image.Image, pose: dict[str, Any]) -> list[tupl
     with torch.inference_mode(): prediction = depth_model(**inputs).predicted_depth
     prediction = torch.nn.functional.interpolate(prediction.unsqueeze(1), size=(height, width), mode="bicubic", align_corners=False).squeeze().detach().float().cpu().numpy()
     prediction = (prediction - prediction.min()) / max(float(prediction.max() - prediction.min()), 1e-6)
-    pixels = np.asarray(image); focal = float(max(width, height)); cx, cy = width / 2, height / 2; q = pose["quaternion"]; p = pose["position"]; result = []
-    for y in range(0, height, 8):
-        for x in range(0, width, 8):
+    pixels = np.asarray(image.convert("RGB")); alpha = None
+    if rembg_session is not None:
+        cutout = rembg.remove(image.convert("RGBA"), session=rembg_session)
+        if isinstance(cutout, bytes):
+            cutout = Image.open(BytesIO(cutout)).convert("RGBA")
+        alpha = np.asarray(cutout)[..., 3]
+    focal = float(max(width, height)); cx, cy = width / 2, height / 2; q = pose["quaternion"]; p = pose["position"]; result = []
+    for y in range(0, height, 12):
+        for x in range(0, width, 12):
+            if alpha is not None and int(alpha[y, x]) < 48:
+                continue
             depth = float(prediction[y, x]); z = 0.3 + (1.0 - depth) * 2.0
             local = np.array([(x - cx) * z / focal, -(y - cy) * z / focal, z], dtype=np.float32)
             world = rotate_by_quaternion(local, q) + np.asarray(p, dtype=np.float32)
@@ -157,7 +165,7 @@ def fuse_voxels(voxels: dict[str, dict[str, float]], points: list[tuple[float, f
             n = old["n"] + 1
             for name, value in (("x", x), ("y", y), ("z", z), ("r", r), ("g", g), ("b", b)): old[name] += (value - old[name]) / n
             old["n"] = n
-    return [[v["x"], v["y"], v["z"]] for v in voxels.values()]
+    return [[v["x"], v["y"], v["z"], v["r"], v["g"], v["b"]] for v in voxels.values()]
 
 
 def process_job(job_id: str, paths: list[Path]):

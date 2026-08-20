@@ -5,7 +5,7 @@ export type MappingTelemetry = {
   features: number
   matches: number
   mapPoints: number
-  points?: [number, number, number][]
+  points?: [number, number, number, number?, number?, number?][]
   pose: { x: number; y: number; z: number }
 }
 

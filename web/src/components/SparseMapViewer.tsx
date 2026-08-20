@@ -2,21 +2,68 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
-export function SparseMapViewer({ points }: { points: [number, number, number][] }) {
+type MapPoint = [number, number, number, number?, number?, number?]
+
+export function SparseMapViewer({ points }: { points: MapPoint[] }) {
   const host = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
-  const pointsRef = useRef<THREE.Points | null>(null)
+  const cloudRef = useRef<THREE.Points | null>(null)
+
   useEffect(() => {
-    if (!host.current) return
-    const scene = new THREE.Scene(); scene.background = new THREE.Color('#050807'); sceneRef.current = scene
-    const camera = new THREE.PerspectiveCamera(55, 1, .001, 100); camera.position.set(0, 0, 2)
-    const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(host.current.clientWidth, 250); host.current.appendChild(renderer.domElement)
-    const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true
-    const animate = () => { controls.update(); renderer.render(scene, camera) }; renderer.setAnimationLoop(animate)
-    const resize = () => { if (!host.current) return; camera.aspect = host.current.clientWidth / 250; camera.updateProjectionMatrix(); renderer.setSize(host.current.clientWidth, 250) }
+    const element = host.current
+    if (!element) return
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color('#050807')
+    scene.add(new THREE.GridHelper(8, 32, 0x34443d, 0x17231e))
+    sceneRef.current = scene
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 100)
+    camera.position.set(0, 0.8, 3.2)
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
+    element.appendChild(renderer.domElement)
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.enableDamping = true
+    controls.target.set(0, 0.8, 0)
+    const resize = () => {
+      camera.aspect = element.clientWidth / Math.max(element.clientHeight, 1)
+      camera.updateProjectionMatrix()
+      renderer.setSize(element.clientWidth, element.clientHeight, false)
+    }
+    resize()
+    renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera) })
     window.addEventListener('resize', resize)
-    return () => { window.removeEventListener('resize', resize); renderer.setAnimationLoop(null); renderer.dispose(); controls.dispose(); sceneRef.current = null; host.current?.removeChild(renderer.domElement) }
+    return () => {
+      window.removeEventListener('resize', resize)
+      renderer.setAnimationLoop(null)
+      controls.dispose()
+      renderer.dispose()
+      element.removeChild(renderer.domElement)
+      sceneRef.current = null
+    }
   }, [])
-  useEffect(() => { const scene = sceneRef.current; if (!scene) return; if (pointsRef.current) scene.remove(pointsRef.current); const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(points.flat(), 3)); const material = new THREE.PointsMaterial({ color: '#b7cf9c', size: .025 }); pointsRef.current = new THREE.Points(geometry, material); scene.add(pointsRef.current) }, [points])
-  return <div className="sparse-map-viewer" ref={host}><span>{points.length ? `${points.length} points` : 'Ожидание 3D-точек…'}</span></div>
+
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene) return
+    if (cloudRef.current) {
+      scene.remove(cloudRef.current)
+      cloudRef.current.geometry.dispose()
+      ;(cloudRef.current.material as THREE.Material).dispose()
+      cloudRef.current = null
+    }
+    if (!points.length) return
+    const positions: number[] = []
+    const colors: number[] = []
+    for (const point of points.slice(-18000)) {
+      positions.push(point[0], point[1], point[2])
+      colors.push(point[3] ?? 0.72, point[4] ?? 0.85, point[5] ?? 0.62)
+    }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    cloudRef.current = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.018, vertexColors: true, sizeAttenuation: true }))
+    scene.add(cloudRef.current)
+  }, [points])
+
+  return <div className="sparse-map-viewer" ref={host}><span>{points.length ? `${points.length} voxels` : 'Waiting for PC reconstruction…'}</span></div>
 }
