@@ -138,12 +138,15 @@ export class VisionSpatialProvider implements SpatialProvider {
       this.recoveryFrames = 0
       this.state = weak ? 'WEAK' : this.lostFrames > 2 ? 'LOST' : 'RECOVERING'
     }
-    if (good && result.parallaxPx > 0.5) {
+    if (good && (result.parallaxPx > 0.5 || this.pose === null)) {
       this.relativePosition = { x: this.relativePosition.x - this.smoothedMotion.x / 320, y: this.relativePosition.y - this.smoothedMotion.y / 320, z: this.relativePosition.z }
       this.pose = { position: this.relativePosition, orientation: { x: 0, y: 0, z: 0, w: 1 }, timestamp: Date.now(), source: 'vision', relativeToOrigin: true, metricScaleAvailable: false }
       this.poseListeners.forEach((listener) => listener(this.pose))
-    } else {
+    } else if (this.state === 'LOST') {
+      this.pose = null
       this.poseListeners.forEach((listener) => listener(null))
+    } else if (this.pose) {
+      this.poseListeners.forEach((listener) => listener(this.pose))
     }
     this.publish()
     this.scheduleSample()
