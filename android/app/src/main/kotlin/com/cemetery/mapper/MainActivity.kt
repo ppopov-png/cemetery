@@ -7,11 +7,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,8 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.viewinterop.AndroidView
+import com.google.ar.core.ArCoreApk
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,33 +73,31 @@ private fun CemeteryMapperApp() {
 
 @Composable
 private fun CameraScreen(onStop: () -> Unit) {
+    var status by remember { mutableStateOf(ArCoreStatus()) }
     Box(modifier = Modifier.fillMaxSize()) {
-        CameraPreview(modifier = Modifier.fillMaxSize())
+        ArCorePreview(status = { status = it }, modifier = Modifier.fillMaxSize())
+        Column(modifier = Modifier.align(Alignment.TopStart).padding(20.dp)) {
+            Text("ARCore · ${status.tracking}", color = if (status.error == null) Color.White else Color(0xFFFFB4AB))
+            Text("Pose: ${status.position}", color = Color.White)
+            Text("Intrinsics: ${status.intrinsics}", color = Color.White)
+            status.error?.let { Text(it, color = Color(0xFFFFB4AB)) }
+        }
         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp)) {
-            Text("CameraX live preview", color = Color.White, modifier = Modifier.padding(bottom = 10.dp))
+            Text("ARCore camera + real pose", color = Color.White, modifier = Modifier.padding(bottom = 10.dp))
             Button(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Stop Mapping") }
         }
     }
 }
 
 @Composable
-private fun CameraPreview(modifier: Modifier = Modifier) {
-    val activity = LocalContext.current as ComponentActivity
+private fun ArCorePreview(status: (ArCoreStatus) -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     AndroidView(
         modifier = modifier,
         factory = { viewContext ->
-            PreviewView(viewContext).also { previewView ->
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(viewContext)
-                cameraProviderFuture.addListener({
-                    val provider = cameraProviderFuture.get()
-                    val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
-                    val analysis = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                    analysis.setAnalyzer(ContextCompat.getMainExecutor(viewContext)) { image -> image.close() }
-                    provider.unbindAll()
-                    provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-                }, ContextCompat.getMainExecutor(viewContext))
+            ArCoreCameraView(viewContext, status).also { view ->
+                try { ArCoreApk.getInstance().requestInstall(context as ComponentActivity, true) } catch (_: Exception) { }
+                view.start()
             }
         },
     )
