@@ -9,15 +9,15 @@ $apk = Join-Path $repoRoot "android\app\build\outputs\apk\debug\app-debug.apk"
 $log = Join-Path $repoRoot "android\adb-connect.log"
 
 if (-not (Test-Path -LiteralPath $adb)) { throw "adb not found: $adb" }
-if (-not (Test-Path -LiteralPath $apk)) { throw "APK not found. Build it first with: cd android; .\gradlew.bat :app:assembleDebug" }
+if (-not (Test-Path -LiteralPath $apk)) { throw "APK not found. Build it first." }
 
 "$(Get-Date -Format s) watcher started" | Set-Content -LiteralPath $log
 & $adb kill-server | Out-Null
 & $adb start-server | Out-Null
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 
-Write-Host "Теперь подключи разблокированный телефон кабелем."
-Write-Host "Команды вводить после подключения не потребуется."
+Write-Host "Connect the unlocked Android phone now."
+Write-Host "No commands are required after connecting it."
 
 while ((Get-Date) -lt $deadline) {
     $lines = @(& $adb devices 2>&1)
@@ -25,11 +25,11 @@ while ((Get-Date) -lt $deadline) {
     if ($deviceLine) {
         "$(Get-Date -Format s) $deviceLine" | Add-Content -LiteralPath $log
         if ($deviceLine -match '\sdevice$') {
-            Write-Host "Устройство стабильно подключено. Устанавливаю APK..."
+            Write-Host "Device is stable. Installing APK..."
             & $adb install -r $apk
             if ($LASTEXITCODE -eq 0) {
                 & $adb shell monkey -p com.cemetery.mapper 1 | Out-Null
-                Write-Host "Готово: APK установлен и запущен."
+                Write-Host "Done: APK installed and launched."
                 exit 0
             }
         }
@@ -39,6 +39,6 @@ while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 1
 }
 
-Write-Host "Устройство не стало стабильным за $TimeoutSeconds секунд."
-Write-Host "Лог сохранён: $log"
+Write-Host "Device did not become stable within $TimeoutSeconds seconds."
+Write-Host "Log saved to: $log"
 exit 1
