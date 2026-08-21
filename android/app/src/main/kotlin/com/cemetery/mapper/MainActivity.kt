@@ -68,14 +68,21 @@ private fun CameraScreen(onStop: () -> Unit) {
     val context = LocalContext.current
     var refresh by remember { mutableStateOf(0) }
     var availability by remember { mutableStateOf<ArCoreApk.Availability?>(null) }
+    var checkFailed by remember { mutableStateOf(false) }
     LaunchedEffect(refresh) {
         availability = null
-        while (true) {
+        checkFailed = false
+        repeat(20) {
             val current = ArCoreApk.getInstance().checkAvailability(context)
             availability = current
-            if (current != ArCoreApk.Availability.UNKNOWN_CHECKING && current != ArCoreApk.Availability.UNKNOWN_ERROR && current != ArCoreApk.Availability.UNKNOWN_TIMED_OUT) break
+            if (current != ArCoreApk.Availability.UNKNOWN_CHECKING && current != ArCoreApk.Availability.UNKNOWN_ERROR && current != ArCoreApk.Availability.UNKNOWN_TIMED_OUT) return@LaunchedEffect
             delay(300)
         }
+        checkFailed = true
+    }
+    if (checkFailed) {
+        ArCoreCheckFailedScreen(onRetry = { refresh++ }, onStop = onStop)
+        return
     }
     when (availability) {
         ArCoreApk.Availability.SUPPORTED_INSTALLED -> ArCoreSessionScreen(onStop)
@@ -121,6 +128,21 @@ private fun ArCoreInstallScreen(onRetry: () -> Unit) {
             catch (_: Exception) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.ar.core"))) }
         }, modifier = Modifier.padding(top = 24.dp)) { Text("Install ARCore") }
         Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) { Text("Check again") }
+    }
+}
+
+@Composable
+private fun ArCoreCheckFailedScreen(onRetry: () -> Unit, onStop: () -> Unit) {
+    val context = LocalContext.current
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Could not verify ARCore", color = Color(0xFFFFB4AB))
+        Text("Google Play Services for AR may be missing, outdated, or temporarily unavailable.", color = Color(0xFFA6B1AA), modifier = Modifier.padding(top = 12.dp))
+        Button(onClick = {
+            try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.ar.core"))) }
+            catch (_: Exception) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.ar.core"))) }
+        }, modifier = Modifier.padding(top = 24.dp)) { Text("Open ARCore page") }
+        Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) { Text("Retry") }
+        Button(onClick = onStop, modifier = Modifier.padding(top = 12.dp)) { Text("Back") }
     }
 }
 
