@@ -29,7 +29,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.viewinterop.AndroidView
-import com.google.ar.core.ArCoreApk
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,8 +94,7 @@ private fun ArCorePreview(status: (ArCoreStatus) -> Unit, modifier: Modifier = M
     AndroidView(
         modifier = modifier,
         factory = { viewContext ->
-            ArCoreCameraView(viewContext, status).also { view ->
-                try { ArCoreApk.getInstance().requestInstall(context as ComponentActivity, true) } catch (_: Exception) { }
+            ArCoreCameraView(viewContext, context as ComponentActivity, status).also { view ->
                 view.start()
             }
         },

@@ -5,7 +5,8 @@ import android.graphics.SurfaceTexture
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
-import android.view.Surface
+import android.app.Activity
+import com.google.ar.core.ArCoreApk
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
@@ -25,9 +26,10 @@ data class ArCoreStatus(
 
 class ArCoreCameraView(
     context: Context,
+    private val activity: Activity,
     private val onStatus: (ArCoreStatus) -> Unit,
 ) : GLSurfaceView(context) {
-    private val renderer = Renderer(context, onStatus, { requestRender() })
+    private val renderer = Renderer(context, activity, onStatus, { requestRender() })
 
     init {
         setEGLContextClientVersion(2)
@@ -41,6 +43,7 @@ class ArCoreCameraView(
 
     private class Renderer(
         private val context: Context,
+        private val activity: Activity,
         private val onStatus: (ArCoreStatus) -> Unit,
         private val requestFrame: () -> Unit,
     ) : GLSurfaceView.Renderer, SurfaceTexture.OnFrameAvailableListener {
@@ -88,6 +91,16 @@ class ArCoreCameraView(
 
         private fun startSession() {
             try {
+                val availability = ArCoreApk.getInstance().checkAvailability(context)
+                if (!availability.isSupported) {
+                    onStatus(ArCoreStatus(error = "ARCORE_UNSUPPORTED: ${availability.name}"))
+                    return
+                }
+                val installStatus = ArCoreApk.getInstance().requestInstall(activity, true)
+                if (installStatus != ArCoreApk.InstallStatus.INSTALLED) {
+                    onStatus(ArCoreStatus(error = "ARCORE_INSTALL_REQUIRED: ${installStatus.name}"))
+                    return
+                }
                 val created = session ?: Session(context).also { session = it }
                 val config = Config(created).apply {
                     updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
