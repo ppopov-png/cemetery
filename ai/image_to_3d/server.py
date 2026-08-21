@@ -17,6 +17,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from transformers import AutoImageProcessor, DepthAnythingForDepthEstimation
+try:
+    from .sam2_service import SAM2ModelUnavailable, sam2_service
+except ImportError:
+    from sam2_service import SAM2ModelUnavailable, sam2_service
 
 AI_ROOT = Path(__file__).resolve().parents[1]
 MODEL_ROOT = AI_ROOT / "third_party" / "triposr"
@@ -42,7 +46,33 @@ model_lock = threading.Lock()
 
 @app.get("/health")
 def health():
-    return {"ok": True, "modelLoaded": model is not None, "depthModelLoaded": depth_model is not None, "cuda": torch.cuda.is_available(), "websocketSessions": len(ws_sessions)}
+    return {"ok": True, "modelLoaded": model is not None, "depthModelLoaded": depth_model is not None, "cuda": torch.cuda.is_available(), "websocketSessions": len(ws_sessions), "sam2": sam2_service.state.__dict__}
+
+
+@app.get("/api/sam2/health")
+def sam2_health():
+    return {"ok": sam2_service.state.status == "READY", **sam2_service.state.__dict__}
+
+
+@app.post("/api/sam2/segment")
+async def sam2_segment(image: UploadFile = File(...)):
+    """Run real SAM 2.1 automatic mask generation on one image."""
+    try:
+        original = Image.open(BytesIO(await image.read())).convert("RGB")
+        masks = sam2_service.generate(original)
+    except SAM2ModelUnavailable as exc:
+        raise HTTPException(503, f"SAM2_MODEL_UNAVAILABLE: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(422, f"SAM2_INPUT_FAILED: {type(exc).__name__}: {exc}") from exc
+    job_id = uuid.uuid4().hex
+    output = JOBS_ROOT / "sam2" / job_id
+    output.mkdir(parents=True, exist_ok=True)
+    objects = []
+    for index, item in enumerate(masks):
+        mask_path = output / f"mask-{index}.png"
+        Image.fromarray((item["mask"] * 255).astype(np.uint8), mode="L").save(mask_path)
+        objects.append({"id": f"sam2-{index}", "maskUrl": f"/files/sam2/{job_id}/{mask_path.name}", "score": item["score"], "area": item["area"], "bbox": item["bbox"]})
+    return {"status": "ready", "model": sam2_service.state.model_id, "device": sam2_service.state.device, "objects": objects}
 
 
 @app.websocket("/ws/v1/mapping")
