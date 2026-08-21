@@ -5,6 +5,7 @@ import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.app.Activity
+import android.os.SystemClock
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -51,6 +52,8 @@ class ArCoreCameraView(
         private var program = 0
         private var running = false
         private var startRequested = false
+        private var nextAvailabilityCheck = 0L
+        private var installCheckStarted = false
         private val vertexBuffer: FloatBuffer = ByteBuffer.allocateDirect(VERTICES.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(VERTICES).position(0) }
 
@@ -65,6 +68,9 @@ class ArCoreCameraView(
         }
 
         override fun onDrawFrame(gl: GL10?) {
+            if (startRequested && !running && SystemClock.elapsedRealtime() >= nextAvailabilityCheck) {
+                startSession()
+            }
             val current = session ?: return
             try {
                 val frame = current.update()
@@ -83,14 +89,24 @@ class ArCoreCameraView(
 
         private fun startSession() {
             try {
+                if (!installCheckStarted) {
+                    installCheckStarted = true
+                    val installStatus = ArCoreApk.getInstance().requestInstall(activity, true)
+                    if (installStatus != ArCoreApk.InstallStatus.INSTALLED) {
+                        onStatus(ArCoreStatus(tracking = "INITIALIZING", error = "ARCORE_INSTALL_REQUIRED: ${installStatus.name}"))
+                        nextAvailabilityCheck = SystemClock.elapsedRealtime() + 1000L
+                        return
+                    }
+                }
                 val availability = ArCoreApk.getInstance().checkAvailability(context)
                 if (!availability.isSupported) {
-                    onStatus(ArCoreStatus(error = "ARCORE_UNSUPPORTED: ${availability.name}"))
-                    return
-                }
-                val installStatus = ArCoreApk.getInstance().requestInstall(activity, true)
-                if (installStatus != ArCoreApk.InstallStatus.INSTALLED) {
-                    onStatus(ArCoreStatus(error = "ARCORE_INSTALL_REQUIRED: ${installStatus.name}"))
+                    if (availability.name == "UNKNOWN_ERROR" || availability.name == "UNKNOWN_CHECKING") {
+                        onStatus(ArCoreStatus(tracking = "INITIALIZING", error = "ARCORE_CHECKING: ${availability.name}"))
+                        nextAvailabilityCheck = SystemClock.elapsedRealtime() + 500L
+                    } else {
+                        startRequested = false
+                        onStatus(ArCoreStatus(error = "ARCORE_UNSUPPORTED: ${availability.name}"))
+                    }
                     return
                 }
                 val created = session ?: Session(context).also { session = it }
