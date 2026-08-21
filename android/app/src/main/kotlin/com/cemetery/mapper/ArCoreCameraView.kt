@@ -76,8 +76,8 @@ class ArCoreCameraView(
         override fun onDrawFrame(gl: GL10?) {
             val current = session ?: return
             try {
-                val frame = current.update()
                 current.setDisplayGeometry(context.display?.rotation ?: Surface.ROTATION_0, surfaceWidth, surfaceHeight)
+                val frame = current.update()
                 drawCamera(frame)
                 publish(frame)
             } catch (error: Exception) {
