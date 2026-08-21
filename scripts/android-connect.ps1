@@ -26,7 +26,7 @@ while ((Get-Date) -lt $deadline) {
         "$(Get-Date -Format s) $deviceLine" | Add-Content -LiteralPath $log
         if ($deviceLine -match '\sdevice$') {
             Write-Host "Device is stable. Installing APK..."
-            & $adb install -r $apk
+            & $adb install --no-streaming -r $apk
             if ($LASTEXITCODE -eq 0) {
                 & $adb shell monkey -p com.cemetery.mapper 1 | Out-Null
                 Write-Host "Done: APK installed and launched."
