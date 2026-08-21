@@ -4,7 +4,9 @@ import android.content.Context
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.view.Surface
 import com.google.ar.core.Config
+import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
@@ -52,6 +54,10 @@ class ArCoreCameraView(
         private var program = 0
         private var running = false
         private var startRequested = false
+        private var surfaceWidth = 1
+        private var surfaceHeight = 1
+        private val ndcCoordinates = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
+        private val textureCoordinates = FloatArray(8)
         private val vertexBuffer: FloatBuffer = ByteBuffer.allocateDirect(VERTICES.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(VERTICES).position(0) }
 
@@ -62,6 +68,8 @@ class ArCoreCameraView(
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+            surfaceWidth = width
+            surfaceHeight = height
             GLES20.glViewport(0, 0, width, height)
         }
 
@@ -69,7 +77,8 @@ class ArCoreCameraView(
             val current = session ?: return
             try {
                 val frame = current.update()
-                drawCamera()
+                current.setDisplayGeometry(context.display?.rotation ?: Surface.ROTATION_0, surfaceWidth, surfaceHeight)
+                drawCamera(frame)
                 publish(frame)
             } catch (error: Exception) {
                 onStatus(ArCoreStatus(error = "ARCORE_UPDATE_FAILED: ${error.message ?: error.javaClass.simpleName}"))
@@ -128,7 +137,21 @@ class ArCoreCameraView(
             )
         }
 
-        private fun drawCamera() {
+        private fun drawCamera(frame: Frame) {
+            frame.transformCoordinates2d(
+                Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
+                ndcCoordinates,
+                Coordinates2d.TEXTURE_NORMALIZED,
+                textureCoordinates,
+            )
+            vertexBuffer.clear()
+            for (index in 0 until 4) {
+                vertexBuffer.put(ndcCoordinates[index * 2])
+                vertexBuffer.put(ndcCoordinates[index * 2 + 1])
+                vertexBuffer.put(textureCoordinates[index * 2])
+                vertexBuffer.put(textureCoordinates[index * 2 + 1])
+            }
+            vertexBuffer.position(0)
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
             GLES20.glUseProgram(program)
             val position = GLES20.glGetAttribLocation(program, "aPosition")

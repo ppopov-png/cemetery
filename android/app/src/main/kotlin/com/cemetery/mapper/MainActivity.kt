@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -99,13 +101,13 @@ private fun ArCoreSessionScreen(onStop: () -> Unit) {
         AndroidView(modifier = Modifier.fillMaxSize(), factory = { viewContext ->
             ArCoreCameraView(viewContext, { next -> status = next }).also { view -> view.start() }
         })
-        Column(Modifier.align(Alignment.TopStart).padding(20.dp)) {
+        Column(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(20.dp)) {
             Text("ARCore · ${status.tracking}", color = Color.White)
             Text("Pose: ${status.position}", color = Color.White)
             Text("Intrinsics: ${status.intrinsics}", color = Color.White)
             status.error?.let { Text(it, color = Color(0xFFFFB4AB)) }
         }
-        Button(onClick = onStop, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(20.dp)) { Text("Stop Mapping") }
+        Button(onClick = onStop, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(20.dp)) { Text("Stop Mapping") }
     }
 }
 
