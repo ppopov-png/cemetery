@@ -793,7 +793,9 @@ Implemented:
 
 ## M2 — Android CameraX Live Camera
 
-**Status: TODO**
+**Status: COMPLETE**
+
+Completed in commit: pending
 
 Implement:
 
@@ -813,6 +815,16 @@ Acceptance:
 - frames programmatically available;
 - rotation does not break capture;
 - no obvious memory leak after several minutes.
+
+Implemented:
+
+- CameraX rear-camera preview;
+- runtime camera permission;
+- CameraX image analysis with latest-frame backpressure;
+- lifecycle-bound camera provider;
+- Start Mapping opens the camera immediately after permission;
+- Stop Mapping releases the camera screen;
+- Cemetery Mapper launcher icon.
 
 ---
 
