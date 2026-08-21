@@ -50,6 +50,7 @@ class ArCoreCameraView(
         private var program = 0
         private var frameAvailable = false
         private var running = false
+        private var startRequested = false
         private val vertexBuffer: FloatBuffer = ByteBuffer.allocateDirect(VERTICES.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(VERTICES).position(0) }
 
@@ -57,6 +58,7 @@ class ArCoreCameraView(
             cameraTextureId = createExternalTexture()
             surfaceTexture = SurfaceTexture(cameraTextureId).also { it.setOnFrameAvailableListener(this) }
             program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
+            if (startRequested) startSession()
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
@@ -79,6 +81,12 @@ class ArCoreCameraView(
         }
 
         fun start() {
+            startRequested = true
+            if (surfaceTexture == null) return
+            startSession()
+        }
+
+        private fun startSession() {
             try {
                 val created = session ?: Session(context).also { session = it }
                 val config = Config(created).apply {
@@ -96,6 +104,7 @@ class ArCoreCameraView(
         }
 
         fun stop() {
+            startRequested = false
             running = false
             session?.pause()
             session?.close()
