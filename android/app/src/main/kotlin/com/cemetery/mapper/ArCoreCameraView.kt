@@ -10,6 +10,7 @@ import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import com.google.ar.core.exceptions.NotYetAvailableException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -20,6 +21,7 @@ data class ArCoreStatus(
     val tracking: String = "INITIALIZING",
     val position: String = "—",
     val intrinsics: String = "—",
+    val depth: String = "NOT_TESTED",
     val error: String? = null,
 )
 
@@ -54,6 +56,8 @@ class ArCoreCameraView(
         private var program = 0
         private var running = false
         private var startRequested = false
+        private var depthEnabled = false
+        private var lastDepthReadMs = 0L
         private var surfaceWidth = 1
         private var surfaceHeight = 1
         private val ndcCoordinates = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
@@ -97,6 +101,13 @@ class ArCoreCameraView(
                 val config = Config(created).apply {
                     updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                     focusMode = Config.FocusMode.AUTO
+                    depthMode = if (created.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+                        depthEnabled = true
+                        Config.DepthMode.AUTOMATIC
+                    } else {
+                        depthEnabled = false
+                        Config.DepthMode.DISABLED
+                    }
                 }
                 created.configure(config)
                 created.setCameraTextureName(cameraTextureId)
@@ -132,9 +143,34 @@ class ArCoreCameraView(
                 ArCoreStatus(
                     tracking = "TRACKING",
                     position = "x %.2f  y %.2f  z %.2f m".format(translation[0], translation[1], translation[2]),
+                    depth = readDepth(frame),
                     intrinsics = "f %.0f×%.0f  c %.0f×%.0f".format(focal[0], focal[1], principal[0], principal[1]),
                 ),
             )
+        }
+
+        private fun readDepth(frame: Frame): String {
+            if (!depthEnabled) return "UNSUPPORTED"
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastDepthReadMs < 250L) return "AVAILABLE"
+            lastDepthReadMs = now
+            return try {
+                frame.acquireDepthImage16Bits().use { image ->
+                    val buffer = image.planes[0].buffer.order(ByteOrder.nativeOrder())
+                    var valid = 0
+                    var sampled = 0
+                    while (buffer.remaining() >= 2) {
+                        if ((buffer.short.toInt() and 0xFFFF) > 0) valid++
+                        sampled++
+                        if (buffer.remaining() >= 126) buffer.position(buffer.position() + 126)
+                    }
+                    "${image.width}x${image.height}, valid ${(valid * 100) / sampled}%"
+                }
+            } catch (_: NotYetAvailableException) {
+                "WAITING"
+            } catch (_: Exception) {
+                "UNAVAILABLE"
+            }
         }
 
         private fun drawCamera(frame: Frame) {

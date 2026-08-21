@@ -105,6 +105,7 @@ private fun ArCoreSessionScreen(onStop: () -> Unit) {
             Text("ARCore · ${status.tracking}", color = Color.White)
             Text("Pose: ${status.position}", color = Color.White)
             Text("Intrinsics: ${status.intrinsics}", color = Color.White)
+            Text("Depth: ${status.depth}", color = Color.White)
             status.error?.let { Text(it, color = Color(0xFFFFB4AB)) }
         }
         Button(onClick = onStop, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(20.dp)) { Text("Stop Mapping") }
