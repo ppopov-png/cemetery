@@ -7,6 +7,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,7 +78,11 @@ private fun CemeteryMapperApp() {
 private fun CameraScreen(onStop: () -> Unit) {
     var status by remember { mutableStateOf(ArCoreStatus()) }
     Box(modifier = Modifier.fillMaxSize()) {
-        ArCorePreview(status = { status = it }, modifier = Modifier.fillMaxSize())
+        if (status.error?.startsWith("ARCORE_") == true) {
+            CameraXPreview(modifier = Modifier.fillMaxSize())
+        } else {
+            ArCorePreview(status = { status = it }, modifier = Modifier.fillMaxSize())
+        }
         Column(modifier = Modifier.align(Alignment.TopStart).padding(20.dp)) {
             Text("ARCore · ${status.tracking}", color = if (status.error == null) Color.White else Color(0xFFFFB4AB))
             Text("Pose: ${status.position}", color = Color.White)
@@ -96,6 +104,27 @@ private fun ArCorePreview(status: (ArCoreStatus) -> Unit, modifier: Modifier = M
         factory = { viewContext ->
             ArCoreCameraView(viewContext, context as ComponentActivity, status).also { view ->
                 view.start()
+            }
+        },
+    )
+}
+
+@Composable
+private fun CameraXPreview(modifier: Modifier = Modifier) {
+    val activity = LocalContext.current as ComponentActivity
+    AndroidView(
+        modifier = modifier,
+        factory = { viewContext ->
+            PreviewView(viewContext).also { previewView ->
+                val providerFuture = ProcessCameraProvider.getInstance(viewContext)
+                providerFuture.addListener({
+                    val provider = providerFuture.get()
+                    val preview = Preview.Builder().build().also {
+                        it.surfaceProvider = previewView.surfaceProvider
+                    }
+                    provider.unbindAll()
+                    provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview)
+                }, ContextCompat.getMainExecutor(viewContext))
             }
         },
     )

@@ -41,6 +41,11 @@ class ArCoreCameraView(
     fun start() { queueEvent { renderer.start() }; requestRender() }
     fun stop() { queueEvent { renderer.stop() } }
 
+    override fun onDetachedFromWindow() {
+        stop()
+        super.onDetachedFromWindow()
+    }
+
     private class Renderer(
         private val context: Context,
         private val activity: Activity,
