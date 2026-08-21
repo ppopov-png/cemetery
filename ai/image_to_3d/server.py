@@ -5,14 +5,14 @@ mask and single-image mesh pipeline, not a metric multi-view reconstruction.
 """
 from __future__ import annotations
 
-import argparse, json, threading, uuid
+import argparse, json, struct, threading, uuid
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import cv2, numpy as np
 import rembg, torch
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -32,6 +32,7 @@ JOBS_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=JOBS_ROOT), name="files")
 jobs: dict[str, dict[str, Any]] = {}
 mapping_sessions: dict[str, dict[str, Any]] = {}
+ws_sessions: dict[str, dict[str, Any]] = {}
 model = None
 rembg_session = None
 depth_model = None
@@ -41,7 +42,53 @@ model_lock = threading.Lock()
 
 @app.get("/health")
 def health():
-    return {"ok": True, "modelLoaded": model is not None, "depthModelLoaded": depth_model is not None, "cuda": torch.cuda.is_available()}
+    return {"ok": True, "modelLoaded": model is not None, "depthModelLoaded": depth_model is not None, "cuda": torch.cuda.is_available(), "websocketSessions": len(ws_sessions)}
+
+
+@app.websocket("/ws/v1/mapping")
+async def mapping_websocket(websocket: WebSocket):
+    """Receive versioned binary frame packets; reconstruction is a later milestone."""
+    await websocket.accept()
+    session_id = None
+    try:
+        while True:
+            packet = await websocket.receive_bytes()
+            if len(packet) < 4:
+                await websocket.send_json({"type": "error", "code": "PACKET_TOO_SHORT"})
+                continue
+            header_size = struct.unpack(">I", packet[:4])[0]
+            if header_size <= 0 or header_size > len(packet) - 4:
+                await websocket.send_json({"type": "error", "code": "INVALID_HEADER_SIZE"})
+                continue
+            try:
+                header = json.loads(packet[4:4 + header_size].decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                await websocket.send_json({"type": "error", "code": "INVALID_HEADER_JSON"})
+                continue
+            if header.get("protocol") != "cemetery.mapping.v1":
+                await websocket.send_json({"type": "error", "code": "UNSUPPORTED_PROTOCOL"})
+                continue
+            current_session = str(header.get("sessionId", ""))
+            frame_id = int(header.get("frameId", -1))
+            if not current_session or frame_id < 0:
+                await websocket.send_json({"type": "error", "code": "INVALID_FRAME_METADATA"})
+                continue
+            if session_id is None:
+                session_id = current_session
+                ws_sessions[session_id] = {"sessionId": session_id, "frames": 0, "lastFrameId": -1, "lastTimestampNs": 0, "bytes": 0, "status": "active"}
+            if current_session != session_id:
+                await websocket.send_json({"type": "error", "code": "SESSION_ID_CHANGED"})
+                continue
+            payload = packet[4 + header_size:]
+            state = ws_sessions[session_id]
+            state["frames"] += 1
+            state["lastFrameId"] = frame_id
+            state["lastTimestampNs"] = int(header.get("timestampNs", 0))
+            state["bytes"] += len(payload)
+            await websocket.send_json({"type": "ack", "protocol": "cemetery.mapping.v1", "sessionId": session_id, "frameId": frame_id})
+    except WebSocketDisconnect:
+        if session_id in ws_sessions:
+            ws_sessions[session_id]["status"] = "disconnected"
 
 @app.post("/api/mapping/start")
 def start_mapping():

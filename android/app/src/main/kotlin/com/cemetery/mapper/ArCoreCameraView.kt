@@ -58,6 +58,8 @@ class ArCoreCameraView(
         private var startRequested = false
         private var depthEnabled = false
         private var lastDepthReadMs = 0L
+        private var frameId = 0L
+        private val transport = MappingTransport()
         private var surfaceWidth = 1
         private var surfaceHeight = 1
         private val ndcCoordinates = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
@@ -113,6 +115,7 @@ class ArCoreCameraView(
                 created.setCameraTextureName(cameraTextureId)
                 created.resume()
                 running = true
+                transport.start()
                 requestFrame()
             } catch (error: Exception) {
                 onStatus(ArCoreStatus(error = "ARCORE_START_FAILED: ${error.message ?: error.javaClass.simpleName}"))
@@ -125,6 +128,7 @@ class ArCoreCameraView(
             session?.pause()
             session?.close()
             session = null
+            transport.stop()
         }
 
         private fun publish(frame: Frame) {
@@ -139,6 +143,7 @@ class ArCoreCameraView(
             val image = camera.imageIntrinsics
             val focal = image.focalLength
             val principal = image.principalPoint
+            sendFrame(frame, pose, focal, principal, image.imageDimensions)
             onStatus(
                 ArCoreStatus(
                     tracking = "TRACKING",
@@ -147,6 +152,29 @@ class ArCoreCameraView(
                     intrinsics = "f %.0f×%.0f  c %.0f×%.0f".format(focal[0], focal[1], principal[0], principal[1]),
                 ),
             )
+        }
+
+        private fun sendFrame(frame: Frame, pose: com.google.ar.core.Pose, focal: FloatArray, principal: FloatArray, dimensions: IntArray) {
+            try {
+                frame.acquireCameraImage().use { image ->
+                    val rotation = pose.rotationQuaternion
+                    transport.enqueue(
+                        MappingFrame(
+                            frameId = ++frameId,
+                            timestampNs = frame.timestamp,
+                            pose = floatArrayOf(pose.translation[0], pose.translation[1], pose.translation[2], rotation[0], rotation[1], rotation[2], rotation[3]),
+                            intrinsics = floatArrayOf(focal[0], focal[1], principal[0], principal[1]),
+                            width = dimensions[0],
+                            height = dimensions[1],
+                            payload = CameraFrameEncoder.encode(image),
+                        ),
+                    )
+                }
+            } catch (_: NotYetAvailableException) {
+                // The next ARCore frame will be attempted; no stale frame is fabricated.
+            } catch (_: Exception) {
+                // Transport failure must not stop the local tracking loop.
+            }
         }
 
         private fun readDepth(frame: Frame): String {
