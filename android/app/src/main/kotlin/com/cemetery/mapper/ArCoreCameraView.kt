@@ -1,7 +1,6 @@
 package com.cemetery.mapper
 
 import android.content.Context
-import android.graphics.SurfaceTexture
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
@@ -34,7 +33,7 @@ class ArCoreCameraView(
     init {
         setEGLContextClientVersion(2)
         setRenderer(renderer)
-        renderMode = RENDERMODE_WHEN_DIRTY
+        renderMode = RENDERMODE_CONTINUOUSLY
         preserveEGLContextOnPause = true
     }
 
@@ -46,12 +45,10 @@ class ArCoreCameraView(
         private val activity: Activity,
         private val onStatus: (ArCoreStatus) -> Unit,
         private val requestFrame: () -> Unit,
-    ) : GLSurfaceView.Renderer, SurfaceTexture.OnFrameAvailableListener {
+    ) : GLSurfaceView.Renderer {
         private var session: Session? = null
-        private var surfaceTexture: SurfaceTexture? = null
         private var cameraTextureId = 0
         private var program = 0
-        private var frameAvailable = false
         private var running = false
         private var startRequested = false
         private val vertexBuffer: FloatBuffer = ByteBuffer.allocateDirect(VERTICES.size * 4)
@@ -59,7 +56,6 @@ class ArCoreCameraView(
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
             cameraTextureId = createExternalTexture()
-            surfaceTexture = SurfaceTexture(cameraTextureId).also { it.setOnFrameAvailableListener(this) }
             program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
             if (startRequested) startSession()
         }
@@ -71,10 +67,6 @@ class ArCoreCameraView(
         override fun onDrawFrame(gl: GL10?) {
             val current = session ?: return
             try {
-                if (frameAvailable) {
-                    surfaceTexture?.updateTexImage()
-                    frameAvailable = false
-                }
                 val frame = current.update()
                 drawCamera()
                 publish(frame)
@@ -85,7 +77,7 @@ class ArCoreCameraView(
 
         fun start() {
             startRequested = true
-            if (surfaceTexture == null) return
+            if (cameraTextureId == 0) return
             startSession()
         }
 
@@ -122,13 +114,6 @@ class ArCoreCameraView(
             session?.pause()
             session?.close()
             session = null
-            surfaceTexture?.release()
-            surfaceTexture = null
-        }
-
-        override fun onFrameAvailable(surfaceTexture: SurfaceTexture?) {
-            frameAvailable = true
-            requestFrame()
         }
 
         private fun publish(frame: Frame) {
